@@ -41,32 +41,35 @@ setup.sh         ── ~20-30 min, mostly unattended ─────
   └─ Optional project bootstrap (MAC_SETUP_PROJECT env var)
 ```
 
-## Quick start
+## Quick start — for new starters
 
-> **Status:** the repo is **internal** right now. Until we flip it public,
-> joiners must clone first.
+On a brand-new Mac, open Terminal.app and paste this one line:
 
-### Clone-and-run (today)
+```bash
+curl -fsSL https://gist.githubusercontent.com/gyula-s/fd7b83ac545662b98d74d06ec8c692a8/raw | bash
+```
+
+It downloads this repo to `~/mac-setup` and tells you to run two commands:
+
+```bash
+cd ~/mac-setup
+./pre-setup.sh   # ~10 min, interactive: SSH key, GitHub paste, git identity
+./setup.sh       # ~20-30 min, mostly unattended (one password prompt at the start)
+```
+
+When `setup.sh` asks "Repos:", you should already know which ones to enter
+— **your buddy/onboarder will give you the list**. The script deliberately
+doesn't suggest names.
+
+### Already have SSH set up?
+
+If you can already `git clone git@github.com:...`, skip the gist:
 
 ```bash
 git clone git@github.com:moneymeans/mac-setup.git
 cd mac-setup
-./pre-setup.sh
+./pre-setup.sh   # detects existing SSH/git config; near-instant
 ./setup.sh
-```
-
-When `setup.sh` asks "Repos:", the new starter should already know which
-repos to enter — **their buddy/onboarder is responsible for giving them
-the list**. The script deliberately doesn't suggest names so this repo
-can be made public without leaking what we have internally.
-
-### Once the repo is public
-
-A fresh Mac with no GitHub login will be able to run:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/moneymeans/mac-setup/main/pre-setup.sh | bash
-curl -fsSL https://raw.githubusercontent.com/moneymeans/mac-setup/main/setup.sh | bash
 ```
 
 ## Buddy guide: onboarding a new starter
