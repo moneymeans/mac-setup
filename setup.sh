@@ -74,6 +74,7 @@ LIB_FILES=(
   lib/claude.sh
   lib/ohmyzsh.sh
   lib/itsycal.sh
+  lib/macos_defaults.sh
   lib/docker.sh
   lib/repos.sh
   lib/project_bootstrap.sh
@@ -108,11 +109,12 @@ Here's what's about to happen, in order:
   4.  Browsers — interactive picker (chrome / firefox / arc / brave)
   5.  Node (mise + LTS), .NET 10 SDK, CSharpier, Claude Code, Oh My Zsh
   6.  Itsycal config (clock format, hide icon, weekday highlight, autostart)
-  7.  Docker Desktop — launches and waits for the daemon
-  8.  Repo cloning — you'll be asked which repos to clone (ask your buddy)
-  9.  Project bootstrap — optional, only if MAC_SETUP_PROJECT is set
-  10. CLI auth — we'll walk you through `gh`, `az`, and `claude` sign-ins
-  11. Summary + "next steps" you still need to do by hand
+  7.  macOS defaults (fast key repeat, Finder dev settings, firewall, screen lock)
+  8.  Docker Desktop — launches and waits for the daemon
+  9.  Repo cloning — you'll be asked which repos to clone (ask your buddy)
+  10. Project bootstrap — optional, only if MAC_SETUP_PROJECT is set
+  11. CLI auth — we'll walk you through `gh`, `az`, and `claude` sign-ins
+  12. Summary + "next steps" you still need to do by hand
 
 Things to know:
   • Stay nearby for the brew bundle stage — Docker/Teams may prompt for
@@ -151,6 +153,9 @@ source "$REPO_DIR/lib/ohmyzsh.sh"
 
 # ── Stage 2b: app-specific config ──────────────────────────────────────
 source "$REPO_DIR/lib/itsycal.sh"
+
+# ── Stage 2c: macOS defaults (security + dev QoL) ──────────────────────
+source "$REPO_DIR/lib/macos_defaults.sh"
 
 # ── Stage 3: Docker Desktop daemon ─────────────────────────────────────
 # Needed before any project-bootstrap step that requires Docker.

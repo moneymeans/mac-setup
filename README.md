@@ -178,6 +178,7 @@ lib/
   claude.sh              Claude Code native installer
   ohmyzsh.sh             Oh My Zsh
   itsycal.sh             configures Itsycal's menu-bar clock format
+  macos_defaults.sh      keyboard, Finder, firewall, screen-lock defaults
   docker.sh              launches Docker Desktop and waits for the daemon
   repos.sh               interactive (or env-driven) clone of moneymeans/<repo>
   project_bootstrap.sh   generic per-project bootstrap driven by MAC_SETUP_PROJECT
