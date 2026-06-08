@@ -46,7 +46,7 @@ setup.sh         ── ~20-30 min, mostly unattended ─────
 On a brand-new Mac, open Terminal.app and paste this one line:
 
 ```bash
-curl -fsSL https://gist.githubusercontent.com/gyula-s/fd7b83ac545662b98d74d06ec8c692a8/raw | bash
+curl -fsSL https://raw.githubusercontent.com/moneymeans/mac-setup/main/bootstrap.sh | bash
 ```
 
 It downloads this repo to `~/mac-setup` and tells you to run two commands:
@@ -63,7 +63,7 @@ doesn't suggest names.
 
 ### Already have SSH set up?
 
-If you can already `git clone git@github.com:...`, skip the gist:
+If you can already `git clone git@github.com:...`, skip the bootstrap step:
 
 ```bash
 git clone git@github.com:moneymeans/mac-setup.git
@@ -162,6 +162,7 @@ The full list lives in [`Brewfile`](./Brewfile) and the `lib/*.sh` modules.
 ## Structure
 
 ```
+bootstrap.sh           tiny downloader — curl|bash entry point for new starters
 pre-setup.sh           self-contained; no lib/ — runs on a totally bare Mac
 setup.sh               entry point — flags, preflight, orchestration, curl|bash staging
 Brewfile               declarative cask + formula list
