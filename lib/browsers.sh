@@ -101,4 +101,6 @@ for name in $browsers; do
   fi
 done
 
-(( install_failed == 1 )) && warn "One or more browsers did not install — scroll up."
+if (( install_failed == 1 )); then
+  warn "One or more browsers did not install — scroll up."
+fi

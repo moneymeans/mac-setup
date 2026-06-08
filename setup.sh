@@ -189,9 +189,12 @@ echo "  - .NET 10 SDK + CSharpier"
 echo "  - Claude Code CLI"
 echo "  - Oh My Zsh"
 echo "  - Docker Desktop (daemon running)"
-$DO_CLONE && echo "  - Cloned repos under ~/work"
-[[ -n "${MAC_SETUP_PROJECT:-}" && -d "$HOME/work/${MAC_SETUP_PROJECT}" ]] && \
+if $DO_CLONE; then
+  echo "  - Cloned repos under ~/work"
+fi
+if [[ -n "${MAC_SETUP_PROJECT:-}" && -d "$HOME/work/${MAC_SETUP_PROJECT}" ]]; then
   echo "  - Bootstrapped $MAC_SETUP_PROJECT"
+fi
 
 echo ""
 echo -e "${YELLOW}Next steps — these need a human:${NC}"

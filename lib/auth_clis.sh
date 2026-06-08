@@ -36,13 +36,19 @@ _yn_yes() {
   esac
 }
 
+# NOTE: All blurbs below use printf + literal "${BLUE}...${NC}" interpolation.
+# `echo "${BLUE}..."` would print the raw \033[...m bytes instead of colour
+# codes (echo doesn't honour the escapes without -e), AND `echo "...`cmd`..."`
+# would treat the backticks as command substitution. printf with a format
+# string sidesteps both.
+
 # ── GitHub CLI ─────────────────────────────────────────────────────────
 if have gh; then
   if gh auth status &>/dev/null; then
     ok "gh already authenticated ($(gh api user --jq .login 2>/dev/null || echo 'unknown user'))"
   else
     echo ""
-    echo "  ${BLUE}GitHub CLI (gh)${NC} — needed for `gh pr create`, `gh repo`, etc."
+    printf "  ${BLUE}GitHub CLI (gh)${NC} — needed for 'gh pr create', 'gh repo', etc.\n"
     if _yn_yes "  Authenticate gh now?"; then
       # --git-protocol ssh: we configured SSH in pre-setup, keep it consistent
       # --skip-ssh-key:     don't offer to upload another key, we already did
@@ -63,7 +69,7 @@ if have az; then
     ok "az already authenticated ($(az account show --query user.name -o tsv 2>/dev/null || echo 'unknown user'))"
   else
     echo ""
-    echo "  ${BLUE}Azure CLI (az)${NC} — needed if you'll touch Azure (App Configuration, Key Vault, etc.)"
+    printf "  ${BLUE}Azure CLI (az)${NC} — needed if you'll touch Azure (App Configuration, Key Vault, etc.)\n"
     if _yn_yes "  Authenticate az now?"; then
       az login || warn "az login didn't complete — re-run later: az login"
     else
@@ -79,9 +85,9 @@ fi
 # run prompts for browser auth if needed). We just tell the user.
 if have claude; then
   echo ""
-  echo "  ${BLUE}Claude Code CLI${NC} — the AI coding assistant we use heavily."
-  echo "  First run of \`claude\` opens a browser for sign-in."
-  if _yn_yes "  Run \`claude\` now to trigger first-run auth?"; then
+  printf "  ${BLUE}Claude Code CLI${NC} — the AI coding assistant we use heavily.\n"
+  printf "  First run of 'claude' opens a browser for sign-in.\n"
+  if _yn_yes "  Run 'claude' now to trigger first-run auth?"; then
     info "Launching claude (this will open a browser if not yet authed). Quit with Ctrl-C or /quit when done."
     claude || true
   else

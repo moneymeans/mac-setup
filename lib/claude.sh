@@ -1,5 +1,6 @@
 # shellcheck shell=bash
-# Sourced from setup.sh after common.sh. Uses: have, info/ok/warn.
+# Sourced from setup.sh after common.sh. Uses: have, info/ok/warn,
+# append_block, ZSHRC.
 #
 # Install Claude Code via Anthropic's native installer. Drops a
 # self-updating binary at ~/.local/bin/claude with no Node dependency.
@@ -7,13 +8,27 @@
 
 CLAUDE_BIN="$HOME/.local/bin/claude"
 
+ensure_local_bin_on_path() {
+  # The native installer is supposed to add ~/.local/bin to .zshrc, but
+  # on fresh user accounts it doesn't always — `claude` then warns
+  # "Native installation exists but ~/.local/bin is not in your PATH".
+  # We own this idempotently regardless of what the installer does.
+  export PATH="$HOME/.local/bin:$PATH"
+  append_block "$ZSHRC" "local-bin" <<'LOCAL_BIN_BLOCK' || true
+# Claude Code (native installer drops binaries here)
+export PATH="$HOME/.local/bin:$PATH"
+LOCAL_BIN_BLOCK
+}
+
 if have claude; then
   ok "Claude Code already installed ($(claude --version 2>/dev/null | head -1 || command -v claude))"
+  ensure_local_bin_on_path
   return 0 2>/dev/null || exit 0
 fi
 
 if [[ -x "$CLAUDE_BIN" ]]; then
   ok "Claude Code already installed at $CLAUDE_BIN"
+  ensure_local_bin_on_path
   return 0 2>/dev/null || exit 0
 fi
 
@@ -28,6 +43,4 @@ else
   warn "Claude Code installer ran but $CLAUDE_BIN is missing — re-run setup.sh or install manually from claude.ai"
 fi
 
-# Make ~/.local/bin reachable in this shell for any later steps. The native
-# installer adds it to .zshrc itself.
-export PATH="$HOME/.local/bin:$PATH"
+ensure_local_bin_on_path
