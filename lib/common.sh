@@ -72,6 +72,47 @@ append_block() {
   return 0
 }
 
+# Replace a sentinel-wrapped block in $file. If the block is absent, behaves
+# like append_block. If present, the existing block (and only the existing
+# block) is removed and the new content is appended at the end. We append
+# rather than substitute in-place because the block content can include
+# characters that would need awkward escaping for sed.
+#
+# Usage mirrors append_block:
+#   replace_block <file> <name> <<'EOF'
+#     ... new lines ...
+#   EOF
+#
+# Use this when the block's content can legitimately change between runs
+# (e.g. DOTNET_ROOT differs by install type), so a stale block on disk must
+# be corrected rather than left alone.
+replace_block() {
+  local file="$1" name="$2"
+  local start="$MAC_SETUP_MARKER_PREFIX $name >>>"
+  local end="$MAC_SETUP_MARKER_SUFFIX $name <<<"
+  local new_content
+  new_content="$(cat)"
+
+  if [[ -f "$file" ]] && grep -qF "$start" "$file"; then
+    local tmp
+    tmp="$(mktemp)"
+    # Strip the existing block, preserving everything else verbatim.
+    awk -v s="$start" -v e="$end" '
+      index($0, s) { skip=1; next }
+      index($0, e) { skip=0; next }
+      !skip { print }
+    ' "$file" > "$tmp"
+    mv "$tmp" "$file"
+  fi
+
+  {
+    echo ""
+    echo "$start"
+    printf '%s\n' "$new_content"
+    echo "$end"
+  } >> "$file"
+}
+
 # Prompt the user for a value, with an optional default. Re-prompts on empty.
 # Usage: ask "Your name" GIT_NAME "$(git config --global user.name)"
 ask() {
