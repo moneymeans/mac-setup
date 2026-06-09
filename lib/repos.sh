@@ -13,10 +13,40 @@
 
 readonly REPO_NAME_REGEX='^[A-Za-z0-9._-]+$'
 
-WORK_DIR="$HOME/work"
-mkdir -p "$WORK_DIR"
-
 section "Clone Money Means repos"
+
+# ── Choose the work folder ─────────────────────────────────────────────
+# Where the user's checked-out repos live. Defaults to ~/work; can be
+# overridden via $MAC_SETUP_WORK_DIR (unattended) or the prompt below.
+# Exported so later modules (project_bootstrap.sh, the final summary)
+# pick up the user's choice instead of hardcoding ~/work.
+DEFAULT_WORK_DIR="$HOME/work"
+WORK_DIR="${MAC_SETUP_WORK_DIR:-}"
+
+if [[ -z "$WORK_DIR" ]]; then
+  if [[ -t 0 ]]; then
+    echo "Where should we clone repos to? Press Enter for the default."
+    echo ""
+    read -rp "Work folder [$DEFAULT_WORK_DIR]: " WORK_DIR
+    WORK_DIR="${WORK_DIR:-$DEFAULT_WORK_DIR}"
+    echo ""
+  else
+    WORK_DIR="$DEFAULT_WORK_DIR"
+  fi
+fi
+
+# Expand ~ and $HOME if the user typed them literally.
+WORK_DIR="${WORK_DIR/#\~/$HOME}"
+WORK_DIR="${WORK_DIR/#\$HOME/$HOME}"
+
+if [[ "$WORK_DIR" != /* ]]; then
+  err "Work folder must be an absolute path (got: '$WORK_DIR')"
+  exit 1
+fi
+
+mkdir -p "$WORK_DIR"
+export WORK_DIR
+ok "Using work folder: $WORK_DIR"
 
 if [[ "${MAC_SETUP_REPOS:-}" == "none" ]]; then
   info "MAC_SETUP_REPOS=none — skipping clone step"

@@ -7,7 +7,7 @@ By the end of running both scripts you have:
 - All runtimes (Node LTS via mise, .NET 10 SDK, Python 3.13)
 - Common dev infrastructure (tmux, ttyd, devtunnel, jq)
 - A GitHub SSH key generated and uploaded
-- The Money Means repos you nominated cloned into `~/work/`
+- The Money Means repos you nominated cloned into `~/work/` (or wherever you point `MAC_SETUP_WORK_DIR`)
 - Optional: a per-project bootstrap (Makefile-driven) if you set `MAC_SETUP_PROJECT`
 - Git identity configured
 
@@ -127,6 +127,7 @@ Both scripts short-circuit on a fully-configured machine. Useful patterns:
 ```bash
 ./setup.sh                                       # full refresh — re-runs brew bundle, etc.
 ./setup.sh --no-clone                            # tooling refresh only (no repo prompt)
+MAC_SETUP_WORK_DIR="$HOME/code" ./setup.sh       # clone repos somewhere other than ~/work
 MAC_SETUP_REPOS="<repo>" ./setup.sh              # unattended re-clone
 MAC_SETUP_REPOS="none" ./setup.sh                # explicit "no repos this time"
 MAC_SETUP_BROWSERS="chrome firefox" ./setup.sh   # pre-pick browsers

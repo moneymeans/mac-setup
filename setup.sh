@@ -22,6 +22,7 @@ Money Means — Mac Developer Setup
     curl -fsSL https://raw.githubusercontent.com/moneymeans/mac-setup/main/setup.sh | bash
 
   Environment variables (your buddy will tell you which to set):
+    MAC_SETUP_WORK_DIR="/path/to/work"      # where to clone repos (default: ~/work)
     MAC_SETUP_REPOS="repo1 repo2"           # pre-supply the clone list
     MAC_SETUP_REPOS="none"                  # explicitly skip the clone prompt
     MAC_SETUP_BROWSERS="chrome firefox"     # pre-supply browser list (default: chrome)
@@ -190,9 +191,9 @@ echo "  - Claude Code CLI"
 echo "  - Oh My Zsh"
 echo "  - Docker Desktop (daemon running)"
 if $DO_CLONE; then
-  echo "  - Cloned repos under ~/work"
+  echo "  - Cloned repos under ${WORK_DIR:-$HOME/work}"
 fi
-if [[ -n "${MAC_SETUP_PROJECT:-}" && -d "$HOME/work/${MAC_SETUP_PROJECT}" ]]; then
+if [[ -n "${MAC_SETUP_PROJECT:-}" && -d "${WORK_DIR:-$HOME/work}/${MAC_SETUP_PROJECT}" ]]; then
   echo "  - Bootstrapped $MAC_SETUP_PROJECT"
 fi
 

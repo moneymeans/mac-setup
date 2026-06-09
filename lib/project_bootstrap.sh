@@ -3,13 +3,17 @@
 #
 # Bootstrap a project the user cloned in the previous step.
 #
-# Activates only if $MAC_SETUP_PROJECT is set AND $HOME/work/$MAC_SETUP_PROJECT
+# Activates only if $MAC_SETUP_PROJECT is set AND $WORK_DIR/$MAC_SETUP_PROJECT
 # exists. The buddy onboarding a new starter is responsible for telling them
 # which project name to set, and for documenting the project's own bootstrap
 # expectations (config files, tmux sessions, etc.) in that project's README.
 #
+# $WORK_DIR is exported by lib/repos.sh (defaults to $HOME/work, overridable
+# via $MAC_SETUP_WORK_DIR or the prompt). Fall back to $HOME/work for the
+# rare case where repos.sh was skipped entirely.
+#
 # This module:
-#   1. Copies $HOME/work/$MAC_SETUP_PROJECT/<config>.example to $HOME/<config>
+#   1. Copies $WORK_DIR/$MAC_SETUP_PROJECT/<config>.example to $HOME/<config>
 #      if BOTH the example exists AND the target doesn't. Filename comes from
 #      $MAC_SETUP_PROJECT_CONFIG (optional).
 #   2. Creates a detached tmux session named $MAC_SETUP_PROJECT_TMUX (optional).
@@ -21,7 +25,7 @@ if [[ -z "${MAC_SETUP_PROJECT:-}" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
-PROJECT_DIR="$HOME/work/$MAC_SETUP_PROJECT"
+PROJECT_DIR="${WORK_DIR:-$HOME/work}/$MAC_SETUP_PROJECT"
 PROJECT_VENV="$PROJECT_DIR/.venv"
 
 if [[ ! -d "$PROJECT_DIR" ]]; then
