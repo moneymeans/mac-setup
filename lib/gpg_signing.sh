@@ -98,13 +98,18 @@ ok "Using identity: $GIT_NAME <$GIT_EMAIL>"
 # `gpg --list-secret-keys --with-colons <email>` is the machine-readable
 # query. It outputs colon-separated records; the "sec" record's 5th field
 # (index 4) is the long key ID. If no key exists, gpg exits 2 and prints
-# nothing — we capture both so set -e doesn't kill us.
+# nothing. The trailing `|| true` is load-bearing: under `set -euo
+# pipefail` (how setup-gpg-signing.sh runs us), pipefail propagates gpg's
+# exit 2 through the pipe, and macOS's bash 3.2 then exits on the
+# `KEY_ID=$(...)` assignment below. `2>/dev/null` only hides stderr — it
+# does NOT change the exit code, so we must swallow it explicitly here.
 #
 # Why long key IDs (16 hex chars) instead of short ones (8): short IDs
 # have known collisions. Git accepts either; we use long.
 _get_signing_key_id() {
   gpg --list-secret-keys --with-colons "$1" 2>/dev/null \
-    | awk -F: '/^sec:/ { print $5; exit }'
+    | awk -F: '/^sec:/ { print $5; exit }' \
+    || true
 }
 
 EXISTING_KEY_ID="$(_get_signing_key_id "$GIT_EMAIL")"
@@ -120,8 +125,12 @@ else
   info "  • This takes ~10-30s while GPG harvests entropy. Move the mouse if it stalls."
 
   # GPG's --batch --gen-key takes a parameter file describing the key.
-  # `Passphrase` with an empty value, plus `%no-protection`, is required
-  # together to generate an unprotected key — neither alone is enough.
+  # `%no-protection` alone generates an unprotected (passphrase-less) key.
+  # Do NOT add an empty `Passphrase:` line — GnuPG 2.5+ rejects it with
+  # "missing argument" and aborts key generation (exit 2), which under
+  # `set -e` killed this script before it could share the key. Older docs
+  # paired an empty `Passphrase:` with `%no-protection`; newer GnuPG needs
+  # only the latter.
   # Heredoc to a temp file (not a pipe) because some gpg builds get
   # finicky reading the parameter file from stdin under set -o pipefail.
   KEY_PARAMS="$(mktemp -t gpg-keygen.XXXXXX)"
@@ -136,7 +145,6 @@ Subkey-Usage: sign
 Name-Real: $GIT_NAME
 Name-Email: $GIT_EMAIL
 Expire-Date: 0
-Passphrase:
 %no-protection
 %commit
 %echo Done
