@@ -80,6 +80,7 @@ LIB_FILES=(
   lib/repos.sh
   lib/project_bootstrap.sh
   lib/auth_clis.sh
+  lib/gpg_signing.sh
 )
 
 REPO_DIR_IS_TEMP=false
@@ -115,7 +116,8 @@ Here's what's about to happen, in order:
   9.  Repo cloning — you'll be asked which repos to clone (ask your buddy)
   10. Project bootstrap — optional, only if MAC_SETUP_PROJECT is set
   11. CLI auth — we'll walk you through `gh`, `az`, and `claude` sign-ins
-  12. Summary + "next steps" you still need to do by hand
+  12. GPG commit signing — generates a key and tells you to add it to GitHub
+  13. Summary + "next steps" you still need to do by hand
 
 Things to know:
   • Stay nearby for the brew bundle stage — Docker/Teams may prompt for
@@ -175,6 +177,12 @@ source "$REPO_DIR/lib/project_bootstrap.sh"
 # ── Stage 6: interactive CLI auth ──────────────────────────────────────
 source "$REPO_DIR/lib/auth_clis.sh"
 
+# ── Stage 7: GPG commit signing ────────────────────────────────────────
+# Runs after auth_clis so the "upload key to GitHub" prompt lands at the
+# end of the script where it's most visible. Pre-setup has already
+# guaranteed user.name + user.email exist in global git config.
+source "$REPO_DIR/lib/gpg_signing.sh"
+
 # ── Summary ────────────────────────────────────────────────────────────
 if (( SETUP_HAD_WARNINGS == 0 )); then
   section "Setup complete!" "$GREEN"
@@ -190,6 +198,7 @@ echo "  - .NET 10 SDK + CSharpier"
 echo "  - Claude Code CLI"
 echo "  - Oh My Zsh"
 echo "  - Docker Desktop (daemon running)"
+echo "  - GPG commit signing (key generated, git configured)"
 if $DO_CLONE; then
   echo "  - Cloned repos under ${WORK_DIR:-$HOME/work}"
 fi
