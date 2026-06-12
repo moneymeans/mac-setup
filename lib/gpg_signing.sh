@@ -125,6 +125,10 @@ else
   info "  • This takes ~10-30s while GPG harvests entropy. Move the mouse if it stalls."
 
   # GPG's --batch --gen-key takes a parameter file describing the key.
+  # `Key-Usage: sign,cert` (not `sign` alone) is the [SC] layout that
+  # standard GPG keys use — `cert` is required on the primary key to
+  # add/rotate subkeys later. Without it, the user is locked out of
+  # any future key management and has to generate a new key from scratch.
   # `%no-protection` alone generates an unprotected (passphrase-less) key.
   # Do NOT add an empty `Passphrase:` line — GnuPG 2.5+ rejects it with
   # "missing argument" and aborts key generation (exit 2), which under
@@ -138,7 +142,7 @@ else
 %echo Generating signing key for $GIT_NAME <$GIT_EMAIL>
 Key-Type: RSA
 Key-Length: 4096
-Key-Usage: sign
+Key-Usage: sign,cert
 Subkey-Type: RSA
 Subkey-Length: 4096
 Subkey-Usage: sign
