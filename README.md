@@ -10,6 +10,7 @@ By the end of running both scripts you have:
 - The Money Means repos you nominated cloned into `~/work/` (or wherever you point `MAC_SETUP_WORK_DIR`)
 - Optional: a per-project bootstrap (Makefile-driven) if you set `MAC_SETUP_PROJECT`
 - Git identity configured
+- GPG commit signing configured — commit authorship is cryptographically verifiable, not just self-declared
 
 Every step is **idempotent** — running either script again is safe and skips anything already done.
 
@@ -38,7 +39,9 @@ setup.sh         ── ~20-30 min, mostly unattended ─────
   ├─ Oh My Zsh
   ├─ Launch Docker Desktop + wait for daemon
   ├─ Clone the repos you nominate (or via MAC_SETUP_REPOS env var)
-  └─ Optional project bootstrap (MAC_SETUP_PROJECT env var)
+  ├─ Optional project bootstrap (MAC_SETUP_PROJECT env var)
+  └─ GPG commit signing (reuses an existing key, or generates RSA 4096; prints
+     the public key + tells you to paste it at github.com/settings/gpg/new)
 ```
 
 ## Quick start — for new starters
@@ -71,6 +74,25 @@ cd mac-setup
 ./pre-setup.sh   # detects existing SSH/git config; near-instant
 ./setup.sh
 ```
+
+### Just need to add GPG commit signing?
+
+For engineers whose Macs are already set up and who only need to turn on
+signed commits — required for our security posture so that commit
+authorship can be cryptographically verified rather than self-declared
+(otherwise anyone can `git config user.email someone@moneymeans.co.uk`
+and impersonate a colleague):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/moneymeans/mac-setup/main/setup-gpg-signing.sh | bash
+```
+
+No clone required, fully idempotent. Reuses any existing GPG key for
+your git email; only generates a new one if none exists. At the end it
+prints your public key and tells you to paste it at
+https://github.com/settings/gpg/new. New starters get this
+automatically as part of `./setup.sh` and don't need to run it
+separately.
 
 ## Buddy guide: onboarding a new starter
 
@@ -166,6 +188,8 @@ The full list lives in [`Brewfile`](./Brewfile) and the `lib/*.sh` modules.
 bootstrap.sh           tiny downloader — curl|bash entry point for new starters
 pre-setup.sh           self-contained; no lib/ — runs on a totally bare Mac
 setup.sh               entry point — flags, preflight, orchestration, curl|bash staging
+setup-gpg-signing.sh   standalone curl|bash entry point for existing engineers
+                       who only need to add GPG commit signing
 Brewfile               declarative cask + formula list
 lib/
   common.sh              shared helpers: logging, have, append_block, ask,
@@ -184,6 +208,8 @@ lib/
   repos.sh               interactive (or env-driven) clone of moneymeans/<repo>
   project_bootstrap.sh   generic per-project bootstrap driven by MAC_SETUP_PROJECT
   auth_clis.sh           guided gh / az / claude browser OAuth (skippable per-CLI)
+  gpg_signing.sh         GPG commit signing — gnupg + pinentry-mac, key reuse-or-
+                         generate, git config, gpg-agent.conf, GPG_TTY in shell rc
 ```
 
 `setup.sh` works two ways:
