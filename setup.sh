@@ -139,6 +139,37 @@ fi
 # ── Preflight ──────────────────────────────────────────────────────────
 source "$REPO_DIR/lib/preflight.sh"
 
+# ── Self-update (only when running from a clone) ───────────────────────
+# Preflight just proved GitHub SSH works, so we can safely `git pull`
+# before doing any heavy work. If the pull brings in new commits, stop
+# and ask the user to re-run — bash holds the script open by fd and
+# mid-run edits are undefined behaviour. Skipped under `curl|bash`
+# (REPO_DIR_IS_TEMP=true) because that path already fetches fresh.
+if ! $REPO_DIR_IS_TEMP && [[ -d "$REPO_DIR/.git" ]]; then
+  section "Checking for updates"
+  if ! git -C "$REPO_DIR" diff --quiet HEAD 2>/dev/null \
+     || ! git -C "$REPO_DIR" diff --cached --quiet HEAD 2>/dev/null; then
+    info "Local changes in $REPO_DIR — skipping self-update so we don't clobber them"
+  else
+    before=$(git -C "$REPO_DIR" rev-parse HEAD)
+    if git -C "$REPO_DIR" pull --ff-only --quiet 2>/dev/null; then
+      after=$(git -C "$REPO_DIR" rev-parse HEAD)
+      if [[ "$before" != "$after" ]]; then
+        section "Setup script updated — please re-run" "$YELLOW"
+        echo "Pulled new commits into $REPO_DIR:"
+        echo ""
+        git -C "$REPO_DIR" log --oneline "$before..$after"
+        echo ""
+        echo "Re-run ./setup.sh to continue with the latest version."
+        exit 0
+      fi
+      ok "Already up to date"
+    else
+      info "Could not fast-forward (diverged branch?) — continuing with local copy"
+    fi
+  fi
+fi
+
 # ── Pre-warm sudo (so casks don't re-prompt mid-flow) ──────────────────
 source "$REPO_DIR/lib/sudo.sh"
 
