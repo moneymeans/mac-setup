@@ -104,11 +104,24 @@ FW=/usr/libexec/ApplicationFirewall/socketfilterfw
 
 if [[ ! -x "$FW" ]]; then
   warn "Application firewall binary missing — skipping (macOS version mismatch?)"
-elif ! sudo -n true 2>/dev/null; then
-  # No cached sudo (the prewarm in lib/sudo.sh expired or never ran).
-  # Skip silently rather than block on a password prompt mid-script.
-  warn "sudo timestamp expired — skipping firewall config. Re-run setup.sh to enable."
 else
+  # The prewarm + keepalive in lib/sudo.sh usually keeps the timestamp
+  # warm, but cask installers (Docker Desktop, Teams) can invalidate it
+  # via `sudo -k`, which also kills our keepalive on its next tick. If
+  # that happened, prompt once here rather than silently skipping —
+  # firewall + stealth mode are too important to drop on a re-run hint.
+  if ! sudo -n true 2>/dev/null; then
+    if [[ -t 0 ]]; then
+      info "sudo timestamp expired (a cask installer likely invalidated it) — re-prompting for firewall config"
+      sudo -v
+    else
+      warn "sudo timestamp expired and no tty for prompt — skipping firewall config. Re-run setup.sh to enable."
+      FW=""
+    fi
+  fi
+fi
+
+if [[ -n "$FW" && -x "$FW" ]]; then
   if sudo -n "$FW" --getglobalstate 2>/dev/null | grep -q "enabled"; then
     ok "Firewall already enabled"
   else
