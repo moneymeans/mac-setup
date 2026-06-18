@@ -154,6 +154,8 @@ MAC_SETUP_REPOS="<repo>" ./setup.sh              # unattended re-clone
 MAC_SETUP_REPOS="none" ./setup.sh                # explicit "no repos this time"
 MAC_SETUP_BROWSERS="chrome firefox" ./setup.sh   # pre-pick browsers
 MAC_SETUP_BROWSERS="none" ./setup.sh             # skip the browser step
+MAC_SETUP_OMZ=yes ./setup.sh                     # install Oh My Zsh without prompting
+MAC_SETUP_OMZ=no ./setup.sh                      # skip Oh My Zsh without prompting
 ./setup.sh --help                                # see all flags
 ```
 
@@ -201,11 +203,16 @@ lib/
   node.sh                mise + Node LTS + shell wiring
   dotnet.sh              .NET 10 SDK + CSharpier + shell wiring
   claude.sh              Claude Code native installer
-  ohmyzsh.sh             Oh My Zsh
+  ohmyzsh.sh             Oh My Zsh (optional, prompts unless MAC_SETUP_OMZ set)
   itsycal.sh             configures Itsycal's menu-bar clock format
+  rectangle.sh           configures Rectangle (autostart, recommended keybindings)
   macos_defaults.sh      keyboard, Finder, firewall, screen-lock defaults
   docker.sh              launches Docker Desktop and waits for the daemon
-  repos.sh               interactive (or env-driven) clone of moneymeans/<repo>
+  repos.sh               interactive (or env-driven) clone of moneymeans/<repo>;
+                         default = claude-herder + MoneyStory; also adds
+                         MoneyStory to ~/.claude-sessions-projects
+  claude_herder.sh       runs `make install` + `make start` on claude-herder,
+                         backgrounds the server, opens http://localhost:7682/
   project_bootstrap.sh   generic per-project bootstrap driven by MAC_SETUP_PROJECT
   auth_clis.sh           guided gh / az / claude browser OAuth (skippable per-CLI)
   gpg_signing.sh         GPG commit signing — gnupg + pinentry-mac, key reuse-or-

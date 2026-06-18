@@ -27,6 +27,8 @@ Money Means — Mac Developer Setup
     MAC_SETUP_REPOS="none"                  # explicitly skip the clone prompt
     MAC_SETUP_BROWSERS="chrome firefox"     # pre-supply browser list (default: chrome)
     MAC_SETUP_BROWSERS="none"               # skip the browser prompt
+    MAC_SETUP_OMZ="yes"                     # install Oh My Zsh without prompting
+    MAC_SETUP_OMZ="no"                      # skip Oh My Zsh without prompting
     MAC_SETUP_PROJECT="<repo-name>"         # which cloned repo to bootstrap (Makefile)
     MAC_SETUP_PROJECT_CONFIG="<conf>"       # copy <conf>.example from the project to ~/<conf>
     MAC_SETUP_PROJECT_TMUX="<session>"      # create a detached tmux session with this name
@@ -70,14 +72,16 @@ LIB_FILES=(
   lib/sudo.sh
   lib/homebrew.sh
   lib/browsers.sh
+  lib/ohmyzsh.sh
   lib/node.sh
   lib/dotnet.sh
   lib/claude.sh
-  lib/ohmyzsh.sh
   lib/itsycal.sh
+  lib/rectangle.sh
   lib/macos_defaults.sh
   lib/docker.sh
   lib/repos.sh
+  lib/claude_herder.sh
   lib/project_bootstrap.sh
   lib/auth_clis.sh
   lib/gpg_signing.sh
@@ -109,15 +113,19 @@ Here's what's about to happen, in order:
   2.  macOS password prompt — once, so brew bundle doesn't re-prompt later
   3.  Homebrew + every app/CLI in Brewfile (heaviest stage, ~10-15 min)
   4.  Browsers — interactive picker (chrome / firefox / arc / brave)
-  5.  Node (mise + LTS), .NET 10 SDK, CSharpier, Claude Code, Oh My Zsh
-  6.  Itsycal config (clock format, hide icon, weekday highlight, autostart)
-  7.  macOS defaults (fast key repeat, Finder dev settings, firewall, screen lock)
-  8.  Docker Desktop — launches and waits for the daemon
-  9.  Repo cloning — you'll be asked which repos to clone (ask your buddy)
-  10. Project bootstrap — optional, only if MAC_SETUP_PROJECT is set
-  11. CLI auth — we'll walk you through `gh`, `az`, and `claude` sign-ins
-  12. GPG commit signing — generates a key and tells you to add it to GitHub
-  13. Summary + "next steps" you still need to do by hand
+  5.  Oh My Zsh — optional, you'll be asked (default = yes)
+  6.  Node (mise + LTS), .NET 10 SDK, CSharpier, Claude Code
+  7.  Itsycal + Rectangle config (autostart + sensible defaults)
+  8.  macOS defaults (fast key repeat, Finder dev settings, firewall, screen lock)
+  9.  Docker Desktop — launches and waits for the daemon
+  10. Repo cloning — default = claude-herder + MoneyStory (press Enter
+      to accept; type names to override; 'none' to skip)
+  11. Bootstrap claude-herder if cloned — `make install` + `make start`,
+      then opens http://localhost:7682/
+  12. Project bootstrap — optional, only if MAC_SETUP_PROJECT is set
+  13. CLI auth — we'll walk you through `gh`, `az`, and `claude` sign-ins
+  14. GPG commit signing — generates a key and tells you to add it to GitHub
+  15. Summary + "next steps" you still need to do by hand
 
 Things to know:
   • Stay nearby for the brew bundle stage — Docker/Teams may prompt for
@@ -179,14 +187,19 @@ source "$REPO_DIR/lib/homebrew.sh"
 # ── Stage 1b: browsers (interactive multi-select) ──────────────────────
 source "$REPO_DIR/lib/browsers.sh"
 
-# ── Stage 2: runtimes that need to be on PATH ──────────────────────────
+# ── Stage 2: zsh framework (must run before node/etc. so its block in
+#            .zshrc lands ABOVE the mise-activate block; oh-my-zsh sets
+#            PROMPT and we want anything later to override it) ─────────
+source "$REPO_DIR/lib/ohmyzsh.sh"
+
+# ── Stage 2a: runtimes that need to be on PATH ─────────────────────────
 source "$REPO_DIR/lib/node.sh"
 source "$REPO_DIR/lib/dotnet.sh"
 source "$REPO_DIR/lib/claude.sh"
-source "$REPO_DIR/lib/ohmyzsh.sh"
 
 # ── Stage 2b: app-specific config ──────────────────────────────────────
 source "$REPO_DIR/lib/itsycal.sh"
+source "$REPO_DIR/lib/rectangle.sh"
 
 # ── Stage 2c: macOS defaults (security + dev QoL) ──────────────────────
 source "$REPO_DIR/lib/macos_defaults.sh"
@@ -201,6 +214,9 @@ if $DO_CLONE; then
 else
   info "Skipping repo clone (--no-clone)"
 fi
+
+# ── Stage 4b: claude-herder bootstrap (no-op if it wasn't cloned) ──────
+source "$REPO_DIR/lib/claude_herder.sh"
 
 # ── Stage 5: project bootstrap ─────────────────────────────────────────
 source "$REPO_DIR/lib/project_bootstrap.sh"
