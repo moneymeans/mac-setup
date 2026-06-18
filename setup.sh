@@ -78,6 +78,7 @@ LIB_FILES=(
   lib/claude.sh
   lib/itsycal.sh
   lib/rectangle.sh
+  lib/iterm.sh
   lib/macos_defaults.sh
   lib/docker.sh
   lib/repos.sh
@@ -115,7 +116,7 @@ Here's what's about to happen, in order:
   4.  Browsers — interactive picker (chrome / firefox / arc / brave)
   5.  Oh My Zsh — optional, you'll be asked (default = yes)
   6.  Node (mise + LTS), .NET 10 SDK, CSharpier, Claude Code
-  7.  Itsycal + Rectangle config (autostart + sensible defaults)
+  7.  Itsycal + Rectangle + iTerm2 config (autostart + sensible defaults)
   8.  macOS defaults (fast key repeat, Finder dev settings, firewall, screen lock)
   9.  Docker Desktop — launches and waits for the daemon
   10. Repo cloning — default = claude-herder + MoneyStory (press Enter
@@ -200,6 +201,7 @@ source "$REPO_DIR/lib/claude.sh"
 # ── Stage 2b: app-specific config ──────────────────────────────────────
 source "$REPO_DIR/lib/itsycal.sh"
 source "$REPO_DIR/lib/rectangle.sh"
+source "$REPO_DIR/lib/iterm.sh"
 
 # ── Stage 2c: macOS defaults (security + dev QoL) ──────────────────────
 source "$REPO_DIR/lib/macos_defaults.sh"
@@ -255,11 +257,19 @@ fi
 
 echo ""
 echo -e "${YELLOW}Next steps — these need a human:${NC}"
-echo "  1. Quit Terminal.app and switch to iTerm2 — that's the terminal we use."
-echo "     (Find it in /Applications, or hit ⌘-Space and type 'iTerm'.)"
-echo "  2. Sign in to the apps: Slack, Notion, Microsoft Teams, your browser(s), VS Code."
-echo "  3. Docker Desktop: complete the first-run setup (it may ask for"
+echo "  1. Sign in to the apps: Slack, Notion, Microsoft Teams, your browser(s), VS Code."
+echo "  2. Docker Desktop: complete the first-run setup (it may ask for"
 echo "     keychain access and accept-licence)."
 if [[ -n "${MAC_SETUP_PROJECT_CONFIG:-}" && -f "$HOME/${MAC_SETUP_PROJECT_CONFIG}" ]]; then
-  echo "  4. Edit ~/${MAC_SETUP_PROJECT_CONFIG} to match your project."
+  echo "  3. Edit ~/${MAC_SETUP_PROJECT_CONFIG} to match your project."
+fi
+
+# Launch iTerm so the user lands in our preferred terminal as setup
+# ends — and close Terminal.app's window if that's what they're in.
+# We don't `killall Terminal` because that would yank the rug out from
+# under any ongoing copy/git op the user might have started elsewhere.
+if [[ -d "/Applications/iTerm.app" ]]; then
+  echo ""
+  echo -e "${GREEN}Launching iTerm — switch to it now. You can close this Terminal window.${NC}"
+  open -a iTerm 2>/dev/null || true
 fi

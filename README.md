@@ -137,10 +137,13 @@ Before they arrive, decide:
 
 | Step | Why we can't automate |
 |---|---|
-| Switch from Terminal.app to iTerm2 | iTerm2 is the team standard; new shells pick up Oh My Zsh + your PATH changes |
 | Sign in to Slack, Notion, Teams, your browsers, VS Code | Identity-bound; we don't have your credentials |
 | Open Docker Desktop the first time | macOS keychain prompt + first-run setup |
 | Edit any per-project config file the bootstrap copied for you | Default values from the example, you fill in real ones |
+
+(`lib/iterm.sh` adds iTerm to Login Items and `setup.sh` launches it at
+the end, so the only manual terminal-switching needed is closing the
+Terminal.app window you ran setup from.)
 
 ## Re-running
 
@@ -206,6 +209,9 @@ lib/
   ohmyzsh.sh             Oh My Zsh (optional, prompts unless MAC_SETUP_OMZ set)
   itsycal.sh             configures Itsycal's menu-bar clock format
   rectangle.sh           configures Rectangle (autostart, recommended keybindings)
+  iterm.sh               adds iTerm to Login Items, skips its first-run wizard;
+                         setup.sh's closing block launches iTerm so the user
+                         lands in our terminal of choice when setup ends
   macos_defaults.sh      keyboard, Finder, firewall, screen-lock defaults
   docker.sh              launches Docker Desktop and waits for the daemon
   repos.sh               interactive (or env-driven) clone of moneymeans/<repo>;
