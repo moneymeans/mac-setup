@@ -83,16 +83,19 @@ looks_doubled() {
   [[ "${s:0:$half}" == "${s:$half}" ]]
 }
 
-# Read a single line as a masked secret. Nothing echoes while the user
-# types or pastes — same UX as `sudo` / `read -s`. Enter ends the read.
-#
-# We deliberately do NOT try to show per-byte feedback here. Prior
-# versions tried (masked `*`, live `.` per byte) using a raw-mode byte
-# loop; both broke in subtle ways on macOS bash 3.2 (leftover
-# bracketed-paste markers, Enter not registering, tty stuck in raw mode
-# when the loop errored out). The boring cooked-mode `read -rs` is what
-# works reliably; the confirmation banner ("✓ received 73 characters
-# (sk-or-v1…c5c)") that fires AFTER Enter is the feedback signal.
+# Read a single line from the user. The key echoes as it's pasted —
+# same UX as `gh auth login` and most CLI tools that accept tokens. We
+# used to mask this with `read -rs` (silent) or a raw-mode byte loop
+# with `*` / `.` feedback, but both were worse:
+#   • silent left the user unsure whether the paste registered
+#   • byte loops got the tty stuck in raw mode when they errored out
+# The visible-key approach trades a few seconds of the key sitting in
+# scrollback for a UX that works reliably on every terminal. We `clear`
+# the screen in the caller once the key is stored, so scrollback
+# exposure is bounded to the current tmux/terminal buffer for those
+# few seconds. If the caller can't `clear` (dumb terminal, CI), the key
+# is still there — but it's already in the user's clipboard and about
+# to be in macOS Keychain, so the incremental exposure is small.
 #
 # Writes the captured string into the variable named in $1 (bash nameref-ish).
 read_masked_line() {
@@ -100,17 +103,13 @@ read_masked_line() {
   local prompt="${2:-  key: }"
   local buf=""
 
-  IFS= read -rs -p "$prompt" buf
-  # `read -s` swallows the trailing newline; print one so the next line
-  # of output doesn't butt up against the prompt.
-  echo "" >&2
+  IFS= read -r -p "$prompt" buf
 
-  # Defense in depth: if the terminal leaked bracketed-paste markers
-  # into the captured string (rare, but seen with some tmux + older
-  # Terminal.app combos), scrub them so we don't store a corrupt key.
+  # Defense in depth: strip bracketed-paste markers if the terminal
+  # leaked them into the captured string (rare with cooked mode, but
+  # harmless to scrub).
   buf="${buf//$'\e[200~'/}"
   buf="${buf//$'\e[201~'/}"
-  # Strip a stray CR — CRLF terminals sometimes leave one on the tail.
   buf="${buf%$'\r'}"
 
   printf -v "$__dest" '%s' "$buf"
@@ -127,8 +126,8 @@ read_openrouter_key() {
     echo ""
     echo -e "${YELLOW}┌───────────────────────────────────────────────────────────┐${NC}"
     echo -e "${YELLOW}│  PASTE YOUR OPENROUTER KEY ON THE NEXT LINE.              │${NC}"
-    echo -e "${YELLOW}│  Nothing echoes (like sudo). Press Enter when done —      │${NC}"
-    echo -e "${YELLOW}│  you'll see 'received N characters' immediately after.    │${NC}"
+    echo -e "${YELLOW}│  The key will be visible while you paste. The screen     │${NC}"
+    echo -e "${YELLOW}│  clears once the key is stored in Keychain.               │${NC}"
     echo -e "${YELLOW}└───────────────────────────────────────────────────────────┘${NC}"
     read_masked_line key "  key: "
 
@@ -520,6 +519,15 @@ else
 fi
 read_openrouter_key OPENROUTER_KEY
 store_key "$OPENROUTER_KEY"
+# Wipe the key off-screen now that it's safely in Keychain. `clear`
+# handles most terminals; the extra `printf` scrolls the tmux/terminal
+# scrollback buffer so a plain up-arrow doesn't reveal the key. Not a
+# security guarantee (the user could still `history` or dig in tmux
+# copy mode), just a courtesy — the key is already in their clipboard
+# and Keychain, so this is about visual cleanliness.
+if [[ -t 1 ]]; then
+  clear 2>/dev/null || printf '\n%.0s' {1..80}
+fi
 if [[ -n "$existing_key" ]]; then
   ok "Replaced stored OpenRouter key in Keychain"
 else
