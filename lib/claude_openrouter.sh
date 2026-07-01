@@ -103,11 +103,28 @@ read_masked_line() {
   local prompt="${2:-  key: }"
   local buf=""
 
+  # Disable bracketed paste before reading. iTerm2 (and most modern
+  # terminals) wrap pasted content in \e[200~ ... \e[201~ markers by
+  # default. In cooked-mode `read -r`, the tty delivers everything up to
+  # \r as one line — but the trailing \e[201~ can arrive AFTER the \r
+  # we typed, staying queued in the tty buffer. Any subsequent process
+  # that reads stdin then either sees garbage or blocks waiting for
+  # more. Turning off bracketed paste with \e[?2004l makes the terminal
+  # deliver the raw pasted bytes with no envelope, so nothing lingers.
+  # Re-enable on the way out so the user's normal shell paste behavior
+  # isn't affected.
+  if [[ -t 1 ]]; then
+    printf '\e[?2004l' >&2
+  fi
+
   IFS= read -r -p "$prompt" buf
 
-  # Defense in depth: strip bracketed-paste markers if the terminal
-  # leaked them into the captured string (rare with cooked mode, but
-  # harmless to scrub).
+  if [[ -t 1 ]]; then
+    printf '\e[?2004h' >&2
+  fi
+
+  # Defense in depth: strip bracketed-paste markers if any leaked
+  # through despite the disable (e.g. if the paste raced our escape).
   buf="${buf//$'\e[200~'/}"
   buf="${buf//$'\e[201~'/}"
   buf="${buf%$'\r'}"
@@ -519,6 +536,7 @@ else
 fi
 read_openrouter_key OPENROUTER_KEY
 store_key "$OPENROUTER_KEY"
+
 # Wipe the key off-screen now that it's safely in Keychain. `clear`
 # handles most terminals; the extra `printf` scrolls the tmux/terminal
 # scrollback buffer so a plain up-arrow doesn't reveal the key. Not a
