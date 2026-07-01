@@ -34,6 +34,15 @@ CLAUDE_OPENROUTER_PAID_MODEL="z-ai/glm-5.2"
 CLAUDE_OPENROUTER_FREE_MODEL="meta-llama/llama-3.3-70b-instruct:free"
 CLAUDE_OPENROUTER_DEFAULT_MODEL="$CLAUDE_OPENROUTER_PAID_MODEL"
 
+# Default OpenRouter Preset name we suggest to the user. A Preset is a
+# saved routing config in the OpenRouter dashboard — we use one to pin
+# the request to a single provider (DeepInfra) with no fallbacks, so the
+# request can't silently route to a different host. The user creates this
+# preset by hand once in https://openrouter.ai/settings/presets; the
+# wrapper then appends "@preset/<name>" to the model string. We default
+# to "deepinfra-only" but the user can pick their own slug during setup.
+CLAUDE_OPENROUTER_DEFAULT_PRESET="deepinfra-only"
+
 # ── Helpers ───────────────────────────────────────────────────────────
 
 # Print a short fingerprint of a secret so the user can verify they
@@ -269,6 +278,78 @@ pick_model() {
   done
 }
 
+# Walk the user through creating a Preset in the OpenRouter dashboard and
+# capture its slug. The Preset is what pins the request to a specific
+# provider (DeepInfra) so OpenRouter can't silently route to a different
+# host — important for both predictable cost and data jurisdiction.
+#
+# The slug is whatever the user named the preset in the dashboard. We
+# default to "deepinfra-only" but accept anything; empty input means
+# "skip — no preset, use Balanced routing".
+#
+# Writes the chosen slug (or empty string for "skip") into $1.
+pick_preset() {
+  local __dest="$1"
+  local default_slug="${2:-$CLAUDE_OPENROUTER_DEFAULT_PRESET}"
+  echo ""
+  echo -e "${YELLOW}┌───────────────────────────────────────────────────────────┐${NC}"
+  echo -e "${YELLOW}│  PIN A SPECIFIC PROVIDER (recommended)                    │${NC}"
+  echo -e "${YELLOW}└───────────────────────────────────────────────────────────┘${NC}"
+  echo ""
+  echo "By default OpenRouter routes your request to whichever provider"
+  echo "is cheapest/fastest right now. That means each request can land on"
+  echo "a different host — bad for predictable cost and data jurisdiction."
+  echo ""
+  echo "To pin DeepInfra (US-based, cheapest output, ~28 tps), create a"
+  echo "Preset in your OpenRouter dashboard:"
+  echo ""
+  echo "  1. Open: https://openrouter.ai/settings/presets"
+  echo "  2. Click 'Create Preset'"
+  echo "  3. Name it (e.g. '$default_slug') — remember this name."
+  echo "  4. In the JSON config, set:"
+  echo ""
+  echo '       {'
+  echo '         "provider": {'
+  echo '           "only": ["deepinfra"],'
+  echo '           "allow_fallbacks": false'
+  echo '         }'
+  echo '       }'
+  echo ""
+  echo "  5. Save."
+  echo ""
+  echo "Then enter the preset name below. Press Enter to skip (use default"
+  echo "Balanced routing — provider can change between requests)."
+  echo ""
+  local choice
+  read -rp "Preset name [$default_slug, or empty to skip]: " choice
+  if [[ -z "${choice// }" ]]; then
+    # User explicitly typed only whitespace OR hit Enter with a default
+    # offered. Honor "skip" if they typed nothing at all; honor default
+    # if they hit Enter without typing.
+    # Distinguish via length: empty means use default; user couldn't have
+    # typed spaces to "skip" cleanly. We accept the default to be safe —
+    # explicit skip requires typing "skip".
+    printf -v "$__dest" '%s' "$default_slug"
+    return 0
+  fi
+  if [[ "$choice" == "skip" ]]; then
+    printf -v "$__dest" '%s' ""
+    return 0
+  fi
+  printf -v "$__dest" '%s' "$choice"
+}
+
+# Reads the DEFAULT_PRESET line out of the installed wrapper, returning
+# empty string if absent. Used so a re-run can pre-fill the previous
+# preset choice instead of forcing the user to re-type it.
+read_installed_default_preset() {
+  if [[ ! -f "$CLAUDE_OPENROUTER_BIN" ]]; then
+    return 0
+  fi
+  sed -n 's/^DEFAULT_PRESET="\${CLAUDE_OPENROUTER_PRESET:-\(.*\)}"$/\1/p' \
+    "$CLAUDE_OPENROUTER_BIN" | head -1
+}
+
 # Reads the DEFAULT_MODEL line out of the installed wrapper. Returns
 # empty string if the wrapper doesn't exist or the line isn't present.
 # Used by --test so we exercise the same model claude-openrouter would
@@ -297,9 +378,11 @@ store_key() {
 }
 
 # Writes (or overwrites) ~/.local/bin/claude-openrouter. Idempotent.
-# Takes the default model slug as $1 — that's what the wrapper bakes in.
+# Takes the default model slug as $1, and a preset slug as $2 (empty
+# string means "no preset — Balanced routing").
 install_wrapper() {
   local default_model="$1"
+  local default_preset="${2:-}"
   mkdir -p "$HOME/.local/bin"
   cat > "$CLAUDE_OPENROUTER_BIN" <<WRAPPER
 #!/usr/bin/env bash
@@ -310,13 +393,27 @@ install_wrapper() {
 # Runs Claude Code against OpenRouter instead of Anthropic's API. The
 # OpenRouter key is fetched from macOS Keychain on every launch, so
 # nothing secret lives on disk. All flags after \`claude-openrouter\` are
-# passed through to the real \`claude\` binary, except --model which we
-# strip and translate into ANTHROPIC_MODEL before exec.
+# passed through to the real \`claude\` binary, except --model, --preset,
+# and --no-usage-check which we strip and consume ourselves.
+#
+# Before launch, if the user is logged in to the real Claude Code and
+# EITHER their 5h or 7d quota has headroom left (utilization < 99%), we
+# warn and ask whether to proceed — the user wants to burn every last
+# percent of the plan before spending OpenRouter credits. Stay silent
+# only when both buckets are effectively exhausted. Pass --no-usage-check
+# to skip the check entirely.
+#
+# Preset support: OpenRouter "Presets" are saved routing configs in the
+# dashboard. We reference them via "<model>@preset/<name>" in the model
+# field — that's the documented syntax for layering a preset's provider
+# rules on top of a base model. If no preset is configured, the wrapper
+# sends the bare model and OpenRouter picks the provider (Balanced).
 set -euo pipefail
 
 KEYCHAIN_SERVICE="$CLAUDE_OPENROUTER_KEYCHAIN_SERVICE"
 BASE_URL="$CLAUDE_OPENROUTER_BASE_URL"
 DEFAULT_MODEL="\${CLAUDE_OPENROUTER_MODEL:-$default_model}"
+DEFAULT_PRESET="\${CLAUDE_OPENROUTER_PRESET:-$default_preset}"
 
 key=\$(security find-generic-password -s "\$KEYCHAIN_SERVICE" -a "\$USER" -w 2>/dev/null || true)
 if [[ -z "\$key" ]]; then
@@ -324,10 +421,14 @@ if [[ -z "\$key" ]]; then
   exit 1
 fi
 
-# Pull --model <id> out of the args, if present, before we forward
-# everything else to claude. Anthropic's CLI doesn't take --model on the
-# command line in all versions, so the env var is the reliable channel.
+# Pull --model, --preset, and --no-usage-check out of the args before we
+# forward everything else to claude. Anthropic's CLI doesn't take --model
+# in all versions, so the env var is the reliable channel. --preset and
+# --no-usage-check are claude-openrouter-specific flags — claude wouldn't
+# know what to do with them anyway.
 model="\$DEFAULT_MODEL"
+preset="\$DEFAULT_PRESET"
+skip_usage_check=0
 forwarded_args=()
 while (( \$# > 0 )); do
   case "\$1" in
@@ -343,12 +444,37 @@ while (( \$# > 0 )); do
       model="\${1#--model=}"
       shift
       ;;
+    --preset)
+      if [[ -z "\${2:-}" ]]; then
+        echo "claude-openrouter: --preset requires a name (e.g. deepinfra-only). Use --preset '' to clear." >&2
+        exit 2
+      fi
+      preset="\$2"
+      shift 2
+      ;;
+    --preset=*)
+      preset="\${1#--preset=}"
+      shift
+      ;;
+    --no-usage-check)
+      skip_usage_check=1
+      shift
+      ;;
     *)
       forwarded_args+=("\$1")
       shift
       ;;
   esac
 done
+
+# Compose the final model string. If a preset is set, append it as
+# "<model>@preset/<name>" — OpenRouter's documented syntax for layering a
+# saved Preset on top of a base model. If the user already wrote a
+# preset suffix into --model, leave it alone (don't double-suffix).
+final_model="\$model"
+if [[ -n "\$preset" && "\$model" != *"@preset/"* ]]; then
+  final_model="\$model@preset/\$preset"
+fi
 
 # Per OpenRouter + community guidance: blank ANTHROPIC_API_KEY so the
 # claude binary doesn't pick up a stored Anthropic key and bypass the
@@ -357,12 +483,117 @@ done
 export ANTHROPIC_BASE_URL="\$BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="\$key"
 export ANTHROPIC_API_KEY=""
-export ANTHROPIC_MODEL="\$model"
+export ANTHROPIC_MODEL="\$final_model"
 # Fast Mode talks to an Anthropic-org-scoped endpoint; skip that check
 # when we're not pointed at Anthropic.
 export CLAUDE_CODE_SKIP_FAST_MODE_ORG_CHECK=1
 
-echo "claude-openrouter → \$BASE_URL  (model: \$model)" >&2
+echo "claude-openrouter → \$BASE_URL  (model: \$final_model)" >&2
+
+# ── Anthropic-still-available check ──────────────────────────────────
+# If the user is logged in to the real Claude Code AND their plan quota
+# still has plenty of headroom, they probably meant to run \`claude\`, not
+# this wrapper. Warn and confirm before spending OpenRouter credits.
+#
+# The check is best-effort: any failure (no keychain entry, expired
+# token, network hiccup, endpoint change, malformed JSON) is silently
+# ignored — we never block launch on a diagnostic we couldn't run.
+#
+# The endpoint is undocumented (\`/api/oauth/usage\` with the
+# oauth-2025-04-20 beta header) and could change; keep the parsing
+# forgiving. Suppress the whole block with --no-usage-check.
+if (( skip_usage_check == 0 )); then
+  anth_blob=\$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null || true)
+  if [[ -n "\$anth_blob" ]]; then
+    # python3 does two things at once: extract accessToken + expiresAt,
+    # and check expiresAt is still in the future. Print "TOKEN\tEXPIRES"
+    # or nothing. Failing silently on any parse error is intentional.
+    # \`read\` returns 1 on EOF; under set -e that kills the wrapper. The
+    # trailing || true keeps us going when python prints nothing (bad JSON,
+    # missing fields, expired-token early-exit).
+    anth_token=""; anth_expires=""
+    read -r anth_token anth_expires < <(printf '%s' "\$anth_blob" | \
+      python3 -c 'import json,sys,time
+try:
+  b=json.loads(sys.stdin.read()).get("claudeAiOauth") or {}
+  t=b.get("accessToken"); e=b.get("expiresAt")
+  if isinstance(e,(int,float)):
+    e = e/1000 if e>1e11 else e
+    if e <= time.time(): sys.exit(0)
+  if t: print(t, e or "")
+except Exception: pass' 2>/dev/null) || true
+    if [[ -n "\${anth_token:-}" ]]; then
+      usage_body=\$(curl -sS --max-time 4 \
+        -H "Authorization: Bearer \$anth_token" \
+        -H "anthropic-beta: oauth-2025-04-20" \
+        "https://api.anthropic.com/api/oauth/usage" 2>/dev/null || true)
+      if [[ -n "\$usage_body" ]]; then
+        # Extract five_hour + seven_day utilization (integers 0-100).
+        # Empty if the endpoint returned an error / different shape.
+        # The API returns utilization as a float (e.g. 40.0, 97.0). Round
+        # to int here so the shell numeric compare below works — bash's
+        # ((…)) doesn't accept floats. Skip a bucket entirely if it has no
+        # utilization value (API user with no plan data).
+        # The API returns utilization as a float (e.g. 40.0, 97.0). Round
+        # to int here so the shell numeric compare below works — bash's
+        # ((…)) doesn't accept floats. Skip a bucket entirely if it has no
+        # utilization value (API user with no plan data). resets_at is an
+        # ISO-8601 datetime — trim to local YYYY-MM-DD HH:MM for the banner.
+        util_5h=""; util_7d=""; reset_5h=""; reset_7d=""
+        read -r util_5h util_7d reset_5h reset_7d < <(printf '%s' "\$usage_body" | \
+          python3 -c 'import json,sys
+from datetime import datetime
+def u(b):
+  v=(b or {}).get("utilization")
+  return str(round(v)) if isinstance(v,(int,float)) else ""
+def r(b):
+  s=(b or {}).get("resets_at")
+  if not isinstance(s,str): return ""
+  try:
+    # No space in the output — `read` word-splits on whitespace, so a
+    # "YYYY-MM-DD HH:MM" would land in two variables. Use T as the sep.
+    return datetime.fromisoformat(s.replace("Z","+00:00")).astimezone().strftime("%Y-%m-%dT%H:%M")
+  except Exception:
+    return ""
+try:
+  d=json.loads(sys.stdin.read())
+  fh=d.get("five_hour") or {}; sd=d.get("seven_day") or {}
+  print(u(fh), u(sd), r(fh), r(sd))
+except Exception: pass' 2>/dev/null) || true
+        # Warn whenever EITHER bucket has any headroom left — the user
+        # wants to burn every last percent of the Anthropic plan before
+        # spending OpenRouter credits. Stay silent only when both buckets
+        # are effectively exhausted (≥99% — leaves a hair of margin for
+        # the API's rounding so you're not nagged at 98.7 rounded to 99).
+        if [[ -n "\${util_5h:-}" && -n "\${util_7d:-}" ]] && \
+           [[ "\$util_5h" =~ ^[0-9]+\$ ]] && [[ "\$util_7d" =~ ^[0-9]+\$ ]] && \
+           ( (( util_5h < 99 )) || (( util_7d < 99 )) ); then
+          # Compute remaining % for the banner — the user cares about
+          # what's LEFT, not what's used. Guaranteed 0..100 since util_*
+          # passed the ^[0-9]+\$ regex above.
+          left_5h=\$(( 100 - util_5h ))
+          left_7d=\$(( 100 - util_7d ))
+          printf '\n\033[33m⚠  Anthropic Claude still has headroom — burn that first:\033[0m\n' >&2
+          printf '     5-hour:  %s%% left  (%s%% used)' "\$left_5h" "\$util_5h" >&2
+          [[ -n "\$reset_5h" ]] && printf '   resets %s' "\$reset_5h" >&2
+          printf '\n     7-day:   %s%% left  (%s%% used)' "\$left_7d" "\$util_7d" >&2
+          [[ -n "\$reset_7d" ]] && printf '   resets %s' "\$reset_7d" >&2
+          printf '\n   Run \`claude\` instead to use it up before spending OpenRouter credits.\n\n' >&2
+          # Non-tty stdin (piped input, CI) → skip the prompt; the
+          # warning alone is enough. Otherwise ask for confirmation.
+          if [[ -t 0 ]]; then
+            read -rp "   Continue with OpenRouter anyway? [y/N] " reply
+            if [[ ! "\$reply" =~ ^[Yy]\$ ]]; then
+              echo "Aborted." >&2
+              exit 130
+            fi
+          fi
+        fi
+      fi
+    fi
+  fi
+fi
+
 # bash 3.2 + set -u: "\${arr[@]}" on an empty array errors with
 # "unbound variable". The +"alt" form expands to nothing if the array
 # is unset/empty, so `claude-openrouter` with no args works.
@@ -434,13 +665,20 @@ case "$mode" in
       return 1 2>/dev/null || exit 1
     fi
     # Test what claude-openrouter would actually run by default — read the
-    # model out of the installed wrapper, not the lib constant. Falls back
-    # to the lib's paid default if the wrapper was never written (e.g.
-    # someone ran --test without ever running install).
+    # model AND preset out of the installed wrapper, not the lib constants.
+    # If the wrapper was never written (e.g. someone ran --test without
+    # ever running install), fall back to the lib's paid default with no
+    # preset (Balanced routing).
     test_model=$(read_installed_default_model)
     test_model="${test_model:-$CLAUDE_OPENROUTER_DEFAULT_MODEL}"
-    info "Using stored key ($(fingerprint "$stored_key")), model: $test_model"
-    if probe_openrouter "$stored_key" "$test_model"; then
+    test_preset=$(read_installed_default_preset)
+    if [[ -n "$test_preset" ]]; then
+      test_model_final="$test_model@preset/$test_preset"
+    else
+      test_model_final="$test_model"
+    fi
+    info "Using stored key ($(fingerprint "$stored_key")), model: $test_model_final"
+    if probe_openrouter "$stored_key" "$test_model_final"; then
       ok "End-to-end test passed."
       return 0 2>/dev/null || exit 0
     else
@@ -510,22 +748,52 @@ pick_model SELECTED_MODEL
 # accept it as the default. Keeping the simpler "always offer the menu"
 # behavior — the menu is two lines and re-runs are rare.
 
-# ── Step 3: install (or refresh) the wrapper binary ────────────────────
-install_wrapper "$SELECTED_MODEL"
-ok "Installed claude-openrouter at $CLAUDE_OPENROUTER_BIN (default model: $SELECTED_MODEL)"
+# ── Step 3: pin a provider (Preset) ────────────────────────────────────
+# By default OpenRouter routes each request to whichever provider it
+# picks. That's bad for predictable cost and data jurisdiction. We walk
+# the user through creating a dashboard Preset (provider.only=[deepinfra],
+# allow_fallbacks=false) and capture its name. If they skip, we install
+# without a preset and OpenRouter does Balanced routing.
+previous_preset=$(read_installed_default_preset)
+SELECTED_PRESET=""
+pick_preset SELECTED_PRESET "${previous_preset:-$CLAUDE_OPENROUTER_DEFAULT_PRESET}"
+if [[ -n "$SELECTED_PRESET" ]]; then
+  ok "Will pin to OpenRouter preset: $SELECTED_PRESET"
+else
+  warn "No preset chosen — requests will use OpenRouter's default routing (Balanced). Provider can change between requests."
+fi
 
-# ── Step 4: ensure PATH ────────────────────────────────────────────────
+# ── Step 4: install (or refresh) the wrapper binary ────────────────────
+install_wrapper "$SELECTED_MODEL" "$SELECTED_PRESET"
+if [[ -n "$SELECTED_PRESET" ]]; then
+  ok "Installed claude-openrouter at $CLAUDE_OPENROUTER_BIN (model: $SELECTED_MODEL, preset: $SELECTED_PRESET)"
+else
+  ok "Installed claude-openrouter at $CLAUDE_OPENROUTER_BIN (model: $SELECTED_MODEL, no preset)"
+fi
+
+# ── Step 5: ensure PATH ────────────────────────────────────────────────
 ensure_local_bin_on_path
 
-# ── Step 5: smoke-test the gateway end-to-end ──────────────────────────
+# ── Step 6: smoke-test the gateway end-to-end ──────────────────────────
+# Compose the model string the same way the wrapper does, so the probe
+# exercises the exact preset path the user just configured. If the
+# preset doesn't exist in their dashboard, OpenRouter will return a
+# clear error here — much better than the user finding out mid-session.
+if [[ -n "$SELECTED_PRESET" ]]; then
+  PROBE_MODEL="$SELECTED_MODEL@preset/$SELECTED_PRESET"
+else
+  PROBE_MODEL="$SELECTED_MODEL"
+fi
 echo ""
-info "Probing $CLAUDE_OPENROUTER_BASE_URL/messages with model $SELECTED_MODEL..."
-probe_openrouter "$OPENROUTER_KEY" "$SELECTED_MODEL" || true
+info "Probing $CLAUDE_OPENROUTER_BASE_URL/messages with model $PROBE_MODEL..."
+probe_openrouter "$OPENROUTER_KEY" "$PROBE_MODEL" || true
 
 echo ""
 echo "Commands:"
 echo "  • claude-openrouter                                start a session via OpenRouter"
-echo "  • claude-openrouter --model <id>                   override per session"
-echo "  • ./setup-claude-openrouter.sh                     re-run to change the key"
+echo "  • claude-openrouter --model <id>                   override model per session"
+echo "  • claude-openrouter --preset <name>                override preset per session (use --preset '' to disable)"
+echo "  • claude-openrouter --no-usage-check               skip the 'Anthropic is still available' warning"
+echo "  • ./setup-claude-openrouter.sh                     re-run to change the key / preset / model"
 echo "  • ./setup-claude-openrouter.sh --test              verify the API works"
 echo "  • ./setup-claude-openrouter.sh --uninstall         remove wrapper + key"
