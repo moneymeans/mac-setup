@@ -103,28 +103,10 @@ read_masked_line() {
   local prompt="${2:-  key: }"
   local buf=""
 
-  # Disable bracketed paste before reading. iTerm2 (and most modern
-  # terminals) wrap pasted content in \e[200~ ... \e[201~ markers by
-  # default. In cooked-mode `read -r`, the tty delivers everything up to
-  # \r as one line — but the trailing \e[201~ can arrive AFTER the \r
-  # we typed, staying queued in the tty buffer. Any subsequent process
-  # that reads stdin then either sees garbage or blocks waiting for
-  # more. Turning off bracketed paste with \e[?2004l makes the terminal
-  # deliver the raw pasted bytes with no envelope, so nothing lingers.
-  # Re-enable on the way out so the user's normal shell paste behavior
-  # isn't affected.
-  if [[ -t 1 ]]; then
-    printf '\e[?2004l' >&2
-  fi
-
   IFS= read -r -p "$prompt" buf
 
-  if [[ -t 1 ]]; then
-    printf '\e[?2004h' >&2
-  fi
-
-  # Defense in depth: strip bracketed-paste markers if any leaked
-  # through despite the disable (e.g. if the paste raced our escape).
+  # Belt-and-suspenders: some terminals leave stray CRs / bracketed-
+  # paste markers on unusual paste paths. Cheap to scrub, no downside.
   buf="${buf//$'\e[200~'/}"
   buf="${buf//$'\e[201~'/}"
   buf="${buf%$'\r'}"
@@ -142,9 +124,9 @@ read_openrouter_key() {
     attempt=$((attempt + 1))
     echo ""
     echo -e "${YELLOW}┌───────────────────────────────────────────────────────────┐${NC}"
-    echo -e "${YELLOW}│  PASTE YOUR OPENROUTER KEY ON THE NEXT LINE.              │${NC}"
-    echo -e "${YELLOW}│  The key will be visible while you paste. The screen     │${NC}"
-    echo -e "${YELLOW}│  clears once the key is stored in Keychain.               │${NC}"
+    echo -e "${YELLOW}│  PASTE YOUR OPENROUTER KEY ON THE NEXT LINE, then Enter.  │${NC}"
+    echo -e "${YELLOW}│  The key is visible while you paste — screen clears once │${NC}"
+    echo -e "${YELLOW}│  the key is stored in Keychain.                           │${NC}"
     echo -e "${YELLOW}└───────────────────────────────────────────────────────────┘${NC}"
     read_masked_line key "  key: "
 
@@ -236,6 +218,15 @@ read_stored_key() {
 
 # Writes the key to Keychain. -U updates if present (so we don't need to
 # delete-then-add as separate steps and risk a half-deleted entry).
+#
+# NOTE: `-T ""` restricts which apps can read this item without a prompt.
+# On first-time add — and on `-U` updates that change the ACL — macOS
+# pops a GUI Keychain dialog asking the user to authorize the change.
+# That dialog often appears behind the terminal window, making the
+# script look hung. The caller prints a warning banner right before us
+# so the user knows to look for it. Do NOT switch to `-A` here: that
+# would grant access to any application, weakening the isolation the
+# wrapper depends on.
 store_key() {
   local key="$1"
   security add-generic-password \
@@ -535,6 +526,19 @@ else
   echo "No OpenRouter key found in Keychain. Get one at https://openrouter.ai/keys"
 fi
 read_openrouter_key OPENROUTER_KEY
+
+# Warn about the Keychain dialog BEFORE calling `security`. On first-add
+# and on ACL-changing updates, macOS pops a GUI authorization prompt
+# that often lands behind the terminal window — looks like a hang. If
+# the user knows to look for it, they'll click "Always Allow" once and
+# never see it again on this laptop.
+echo ""
+echo -e "${YELLOW}⚠  macOS may now show a Keychain access dialog.${NC}"
+echo "   It can appear BEHIND this terminal window — check Mission Control"
+echo "   or Cmd-Tab if the script seems to hang here."
+echo "   Click 'Always Allow' so future runs don't prompt again."
+echo ""
+
 store_key "$OPENROUTER_KEY"
 
 # Wipe the key off-screen now that it's safely in Keychain. `clear`
