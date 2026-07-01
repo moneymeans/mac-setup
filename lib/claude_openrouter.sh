@@ -83,129 +83,35 @@ looks_doubled() {
   [[ "${s:0:$half}" == "${s:$half}" ]]
 }
 
-# Read a single line as a masked secret. Each printable byte the user
-# pastes or types shows a `.` in the prompt so they can see the paste
-# was received (73 dots for a normal OpenRouter key). The actual
-# characters never hit scrollback. Backspace erases the last dot.
-# Enter / newline ends input.
+# Read a single line as a masked secret. Nothing echoes while the user
+# types or pastes — same UX as `sudo` / `read -s`. Enter ends the read.
 #
-# We take direct control of the tty for this read: put it in raw
-# (non-canonical, no-echo) mode, disable bracketed paste at both the
-# terminal and stty levels, read one byte at a time, then fully restore
-# the tty on the way out. This is more code than `read -rs` in cooked
-# mode, but it's the only way to (a) show live feedback and (b) be sure
-# no leftover bytes (bracketed-paste tail markers, CRLF stragglers) sit
-# in the tty buffer to trip up the next interactive read in the script.
+# We deliberately do NOT try to show per-byte feedback here. Prior
+# versions tried (masked `*`, live `.` per byte) using a raw-mode byte
+# loop; both broke in subtle ways on macOS bash 3.2 (leftover
+# bracketed-paste markers, Enter not registering, tty stuck in raw mode
+# when the loop errored out). The boring cooked-mode `read -rs` is what
+# works reliably; the confirmation banner ("✓ received 73 characters
+# (sk-or-v1…c5c)") that fires AFTER Enter is the feedback signal.
 #
 # Writes the captured string into the variable named in $1 (bash nameref-ish).
 read_masked_line() {
   local __dest="$1"
   local prompt="${2:-  key: }"
-  local buf="" ch n_visible=0
+  local buf=""
 
-  # No controlling tty (piped stdin, CI) → fall back to plain read.
-  if [[ ! -t 0 ]]; then
-    IFS= read -r buf
-    printf -v "$__dest" '%s' "$buf"
-    return
-  fi
+  IFS= read -rs -p "$prompt" buf
+  # `read -s` swallows the trailing newline; print one so the next line
+  # of output doesn't butt up against the prompt.
+  echo "" >&2
 
-  # Save every tty setting so we can restore precisely on exit. `stty -g`
-  # emits an opaque cookie the same `stty` can consume verbatim.
-  local saved_stty
-  saved_stty=$(stty -g)
-
-  # Trap ensures we always restore the tty and re-enable echo even if
-  # the user Ctrl-C's out of the read.
-  # shellcheck disable=SC2064  # intentional: capture $saved_stty at trap-set time
-  trap "stty '$saved_stty' 2>/dev/null; printf '\e[?2004l' >&2" EXIT INT TERM
-
-  # Disable bracketed paste at the terminal level. Belt-and-suspenders:
-  # some terminals (iTerm2) will still send the \e[200~/\e[201~ markers
-  # if the paste starts before this sequence takes effect, so the byte
-  # loop below also drops them.
-  printf '\e[?2004l' >&2
-
-  # Non-canonical + no-echo. min=1 time=0 means `read` blocks until at
-  # least one byte is available, then returns exactly that byte — no
-  # line buffering, no cooked-mode Enter handling.
-  stty -icanon -echo min 1 time 0 2>/dev/null || {
-    # If stty fails for some reason, fall back to the boring cooked read
-    # so setup can still complete.
-    stty "$saved_stty" 2>/dev/null
-    trap - EXIT INT TERM
-    IFS= read -rs -p "$prompt" buf
-    echo "" >&2
-    buf="${buf//$'\e[200~'/}"
-    buf="${buf//$'\e[201~'/}"
-    buf="${buf%$'\r'}"
-    printf -v "$__dest" '%s' "$buf"
-    return
-  }
-
-  printf '%s' "$prompt" >&2
-
-  # Byte-by-byte loop. We break on \r or \n (either can arrive depending
-  # on the terminal). CSI escape sequences (bracketed paste markers,
-  # stray arrow keys) are consumed and dropped. Everything else appends
-  # to the buffer and shows a dot.
-  while IFS= read -rn1 ch; do
-    case "$ch" in
-      $'\n'|$'\r')
-        break
-        ;;
-      $'\b'|$'\x7f')
-        if (( n_visible > 0 )); then
-          buf="${buf:0:${#buf}-1}"
-          n_visible=$(( n_visible - 1 ))
-          printf '\b \b' >&2
-        fi
-        ;;
-      $'\033')
-        # Possible CSI sequence — read the '[' and then param bytes up
-        # to the final letter. Drop the whole sequence. Bracketed-paste
-        # markers (\e[200~, \e[201~) land here; so do stray arrow keys.
-        local next
-        IFS= read -rn1 -t 1 next 2>/dev/null || true
-        if [[ "$next" == '[' ]]; then
-          local final
-          while IFS= read -rn1 -t 1 final 2>/dev/null; do
-            [[ "$final" =~ [0-9\;] ]] || break
-          done
-        fi
-        continue
-        ;;
-      '')
-        # Empty read shouldn't happen in min=1 mode, but guard anyway.
-        continue
-        ;;
-      *)
-        buf+="$ch"
-        n_visible=$(( n_visible + 1 ))
-        printf '.' >&2
-        ;;
-    esac
-  done
-  printf '\n' >&2
-
-  # Restore tty BEFORE draining, so if drain leaves something behind
-  # (shouldn't, but…) it lands in a normal cooked-mode buffer.
-  stty "$saved_stty" 2>/dev/null
-  trap - EXIT INT TERM
-
-  # Best-effort drain: in raw mode with min=1 we consumed exactly what
-  # was queued, but flip stty briefly to non-blocking and eat anything
-  # the terminal delivered after our loop broke (rare edge case with
-  # some tmux configurations).
-  stty -icanon min 0 time 0 2>/dev/null && {
-    local _drain _i
-    for (( _i = 0; _i < 64; _i++ )); do
-      _drain=""
-      IFS= read -rn1 _drain 2>/dev/null
-      [[ -z "$_drain" ]] && break
-    done
-    stty "$saved_stty" 2>/dev/null
-  }
+  # Defense in depth: if the terminal leaked bracketed-paste markers
+  # into the captured string (rare, but seen with some tmux + older
+  # Terminal.app combos), scrub them so we don't store a corrupt key.
+  buf="${buf//$'\e[200~'/}"
+  buf="${buf//$'\e[201~'/}"
+  # Strip a stray CR — CRLF terminals sometimes leave one on the tail.
+  buf="${buf%$'\r'}"
 
   printf -v "$__dest" '%s' "$buf"
 }
@@ -221,7 +127,8 @@ read_openrouter_key() {
     echo ""
     echo -e "${YELLOW}┌───────────────────────────────────────────────────────────┐${NC}"
     echo -e "${YELLOW}│  PASTE YOUR OPENROUTER KEY ON THE NEXT LINE.              │${NC}"
-    echo -e "${YELLOW}│  Each byte shows as a dot; press Enter ONCE when done.    │${NC}"
+    echo -e "${YELLOW}│  Nothing echoes (like sudo). Press Enter when done —      │${NC}"
+    echo -e "${YELLOW}│  you'll see 'received N characters' immediately after.    │${NC}"
     echo -e "${YELLOW}└───────────────────────────────────────────────────────────┘${NC}"
     read_masked_line key "  key: "
 
