@@ -364,8 +364,9 @@ def r(b):
   s=(b or {}).get("resets_at")
   if not isinstance(s,str): return ""
   try:
-    # No space in the output — `read` word-splits on whitespace, so a
-    # "YYYY-MM-DD HH:MM" would land in two variables. Use T as the sep.
+    # No space in the output — the shell read builtin word-splits on
+    # whitespace, so a "YYYY-MM-DD HH:MM" would land in two variables.
+    # Use T as the separator instead.
     return datetime.fromisoformat(s.replace("Z","+00:00")).astimezone().strftime("%Y-%m-%dT%H:%M")
   except Exception:
     return ""
@@ -410,7 +411,7 @@ fi
 
 # bash 3.2 + set -u: "\${arr[@]}" on an empty array errors with
 # "unbound variable". The +"alt" form expands to nothing if the array
-# is unset/empty, so `claude-openrouter` with no args works.
+# is unset/empty, so \`claude-openrouter\` with no args works.
 exec claude \${forwarded_args[@]+"\${forwarded_args[@]}"}
 WRAPPER
   chmod +x "$CLAUDE_OPENROUTER_BIN"
