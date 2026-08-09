@@ -173,7 +173,7 @@ ran cleanly — don't trust silent success.
 
 ## What gets installed
 
-**CLI tools** (via Homebrew): `git`, `gh`, `mise`, `azure-cli`, `tmux`, `ttyd`, `jq`, `python@3.13`
+**CLI tools** (via Homebrew): `git`, `gh`, `mise`, `azure-cli`, `tmux`, `ttyd`, `jq`, `python@3.13`, `coreutils`
 **Apps** (via Homebrew Cask): iTerm2, VS Code, Docker Desktop, Notion, Slack, Teams, Itsycal, Rectangle, VLC, DevTunnel
 **Browsers** (interactive multi-select via `lib/browsers.sh`): Chrome, Firefox, Arc, Brave
 **Runtimes**: Node.js LTS (via mise), .NET 10 SDK (via dotnet-install.sh)

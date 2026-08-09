@@ -10,6 +10,9 @@ brew "tmux"          # session multiplexer
 brew "ttyd"          # terminal-over-WebSocket (for any project that needs it)
 brew "jq"            # general JSON wrangling; used by various install scripts
 brew "python@3.13"   # brew default Python; projects that need ≥ 3.11 use this
+brew "coreutils"     # GNU tools as g*; provides `gtimeout` — macOS ships no `timeout`,
+                     # so scripts that time-cap docker calls degrade to running uncapped
+                     # (a hung daemon then blocks forever instead of failing fast)
 
 # Apps
 cask "iterm2"
