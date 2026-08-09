@@ -215,8 +215,9 @@ lib/
   macos_defaults.sh      keyboard, Finder, firewall, screen-lock defaults
   docker.sh              launches Docker Desktop and waits for the daemon
   repos.sh               interactive (or env-driven) clone of moneymeans/<repo>;
-                         default = claude-herder + MoneyStory; also adds
-                         MoneyStory to ~/.claude-sessions-projects
+                         default = claude-herder only (herder clones MoneyStory
+                         itself); registers an explicitly-named MoneyStory
+                         clone in ~/.claude-sessions-projects
   claude_herder.sh       runs `make install` + `make start` on claude-herder,
                          backgrounds the server, opens http://localhost:7682/
   project_bootstrap.sh   generic per-project bootstrap driven by MAC_SETUP_PROJECT
