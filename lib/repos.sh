@@ -6,8 +6,12 @@
 #
 # Repo list comes from one of:
 #   - $MAC_SETUP_REPOS env var (whitespace-separated names)
-#   - interactive prompt (default: claude-herder + MoneyStory if the
-#     user just hits Enter; skipped if --no-clone or MAC_SETUP_REPOS=none)
+#   - interactive prompt (default: claude-herder alone if the user just
+#     hits Enter; skipped if --no-clone or MAC_SETUP_REPOS=none)
+#
+# MoneyStory is deliberately NOT in the default set: claude-herder clones
+# it itself during its own bootstrap, so cloning it here would duplicate
+# work and leave two sources of truth for where the checkout lives.
 #
 # Repo names are GitHub repos under the moneymeans org. We clone via SSH
 # so the user keeps push access without needing a PAT.
@@ -16,10 +20,12 @@
 # the clone is added to ~/.claude-sessions-projects (one path per line,
 # idempotent). claude-sessions reads that file to populate its project
 # picker; without the entry MoneyStory won't show up there. Only mutated
-# if the file already exists — we don't create it from scratch.
+# if the file already exists — we don't create it from scratch. This only
+# fires if the user names MoneyStory explicitly; the herder-managed clone
+# is registered by herder.
 
 readonly REPO_NAME_REGEX='^[A-Za-z0-9._-]+$'
-readonly DEFAULT_REPOS="claude-herder MoneyStory"
+readonly DEFAULT_REPOS="claude-herder"
 readonly CLAUDE_SESSIONS_FILE="$HOME/.claude-sessions-projects"
 
 section "Clone Money Means repos"
@@ -77,8 +83,9 @@ if [[ -z "$REPOS_INPUT" ]]; then
   echo ""
   printf "  ${BLUE}Default${NC}   Press Enter to clone the standard set:\n"
   echo   "             $DEFAULT_REPOS"
+  echo   "             (MoneyStory is cloned by claude-herder itself)"
   printf "  ${BLUE}Custom${NC}    Type names space-separated to override:\n"
-  echo   "             e.g.  claude-herder MoneyStory api-gateway"
+  echo   "             e.g.  claude-herder api-gateway"
   printf "  ${BLUE}Skip${NC}      Type 'none' to skip (clone later with"
   echo   " git clone git@github.com:moneymeans/<repo>.git)"
   echo ""

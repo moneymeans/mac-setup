@@ -173,7 +173,7 @@ ran cleanly — don't trust silent success.
 
 ## What gets installed
 
-**CLI tools** (via Homebrew): `git`, `gh`, `mise`, `azure-cli`, `tmux`, `ttyd`, `jq`, `python@3.13`
+**CLI tools** (via Homebrew): `git`, `gh`, `mise`, `azure-cli`, `tmux`, `ttyd`, `jq`, `python@3.13`, `coreutils`
 **Apps** (via Homebrew Cask): iTerm2, VS Code, Docker Desktop, Notion, Slack, Teams, Itsycal, Rectangle, VLC, DevTunnel
 **Browsers** (interactive multi-select via `lib/browsers.sh`): Chrome, Firefox, Arc, Brave
 **Runtimes**: Node.js LTS (via mise), .NET 10 SDK (via dotnet-install.sh)
@@ -215,8 +215,9 @@ lib/
   macos_defaults.sh      keyboard, Finder, firewall, screen-lock defaults
   docker.sh              launches Docker Desktop and waits for the daemon
   repos.sh               interactive (or env-driven) clone of moneymeans/<repo>;
-                         default = claude-herder + MoneyStory; also adds
-                         MoneyStory to ~/.claude-sessions-projects
+                         default = claude-herder only (herder clones MoneyStory
+                         itself); registers an explicitly-named MoneyStory
+                         clone in ~/.claude-sessions-projects
   claude_herder.sh       runs `make install` + `make start` on claude-herder,
                          backgrounds the server, opens http://localhost:7682/
   project_bootstrap.sh   generic per-project bootstrap driven by MAC_SETUP_PROJECT

@@ -119,10 +119,10 @@ Here's what's about to happen, in order:
   7.  Itsycal + Rectangle + iTerm2 config (autostart + sensible defaults)
   8.  macOS defaults (fast key repeat, Finder dev settings, firewall, screen lock)
   9.  Docker Desktop — launches and waits for the daemon
-  10. Repo cloning — default = claude-herder + MoneyStory (press Enter
-      to accept; type names to override; 'none' to skip)
+  10. Repo cloning — default = claude-herder (press Enter to accept;
+      type names to override; 'none' to skip)
   11. Bootstrap claude-herder if cloned — `make install` + `make start`,
-      then opens http://localhost:7682/
+      then opens http://localhost:7682/ (herder clones MoneyStory itself)
   12. Project bootstrap — optional, only if MAC_SETUP_PROJECT is set
   13. CLI auth — we'll walk you through `gh`, `az`, and `claude` sign-ins
   14. GPG commit signing — generates a key and tells you to add it to GitHub
