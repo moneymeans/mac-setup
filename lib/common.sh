@@ -298,3 +298,107 @@ github_ssh_ok() {
   done
   return 1
 }
+
+# ── Step-outcome fallbacks ─────────────────────────────────────────────
+# lib/status.sh defines the real step registry and the end-of-run report.
+# It is sourced by setup.sh, but NOT by the standalone entry points
+# (setup-gpg-signing.sh, setup-claude-openrouter.sh) which pull in only
+# common.sh plus the one module they need.
+#
+# Those modules still call step_ok/step_warn/step_fail, so without a
+# definition they'd die with "command not found" — under `set -e`, that
+# would abort the standalone script at the very last step, after all the
+# real work succeeded. Defining no-ops here keeps a module usable in both
+# contexts; status.sh overrides them when it's loaded.
+#
+# Declared with `declare -f` guards so re-sourcing common.sh after
+# status.sh (which setup.sh does not do, but a future caller might)
+# can't silently downgrade the real implementations back to no-ops.
+if ! declare -f step_ok >/dev/null 2>&1; then
+  step_ok()   { :; }
+  step_skip() { :; }
+  step_warn() { SETUP_HAD_WARNINGS=1; }
+  step_fail() { SETUP_HAD_WARNINGS=1; }
+fi
+
+# ── SAML SSO detection ─────────────────────────────────────────────────
+# `ssh -T git@github.com` succeeding proves the key is on the ACCOUNT. It
+# does NOT prove the key can read moneymeans repos: our org enforces SAML
+# SSO, and an SSH key must additionally be authorised for the org before
+# GitHub will serve org content over it. Until then every clone fails with
+# a message about SSO that reads, to a new starter who has just been told
+# their key works, like a contradiction.
+#
+# This bit us on a new starter's first day in August 2026: pre-setup said
+# "GitHub now accepts the key", then setup.sh's clone step failed and the
+# error mentioned SAML — with no indication that the fix is a second,
+# separate authorisation click on the key you just added.
+#
+# The org name is centralised here because it appears in the SSH URL, the
+# probe, and every SSO instruction block.
+: "${GITHUB_ORG:=moneymeans}"
+# Repo used to probe org read access. Must be a repo every engineer can
+# read; this one is public, but that's incidental — over SSH, GitHub still
+# refuses org content on an unauthorised key, which is exactly what we
+# want to detect.
+: "${GITHUB_SSO_PROBE_REPO:=mac-setup}"
+
+# Probe whether this machine's SSH key can read moneymeans repos.
+# Echoes one of: ok | sso | denied | offline   (and returns 0 always, so
+# callers can `case` on the word without tripping `set -e`).
+#
+# `git ls-remote` is the cheapest real read — it needs the same
+# authorisation a clone does but transfers no objects. We capture stderr
+# and classify it, because the exit code is 128 for every failure mode.
+github_org_access() {
+  local url="git@github.com:${GITHUB_ORG}/${GITHUB_SSO_PROBE_REPO}.git"
+  local output rc=0
+
+  # GIT_TERMINAL_PROMPT=0 and BatchMode=yes keep this non-interactive: a
+  # missing/locked key must fail fast rather than block the script on a
+  # passphrase or username prompt.
+  output=$(GIT_TERMINAL_PROMPT=0 \
+           GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10" \
+           git ls-remote --exit-code -h "$url" 2>&1) || rc=$?
+
+  if (( rc == 0 )); then
+    echo "ok"
+    return 0
+  fi
+
+  # GitHub's wording has been stable for years, but match loosely (any of
+  # SAML / SSO / single sign-on, case-insensitive) so a copy tweak on
+  # their side degrades to `denied` at worst, never to a false `ok`.
+  if echo "$output" | grep -qiE 'saml|single.sign.on|sso'; then
+    echo "sso"
+  elif echo "$output" | grep -qiE 'could not resolve|network is unreachable|connection timed out|temporary failure'; then
+    echo "offline"
+  else
+    echo "denied"
+  fi
+  return 0
+}
+
+# The instruction block a user needs to authorise their key for SSO.
+# Printed by pre-setup.sh as a gate and by repos.sh as recovery, so it
+# lives here rather than being written twice and drifting.
+print_sso_instructions() {
+  echo ""
+  echo -e "${YELLOW}Authorise your SSH key for the ${GITHUB_ORG} organisation (SAML SSO)${NC}"
+  echo ""
+  echo "  Adding the key to your account is only HALF the job. Our org enforces"
+  echo "  SAML single sign-on, so the key also has to be authorised for"
+  echo "  '${GITHUB_ORG}' before GitHub will let you clone anything."
+  echo ""
+  echo "  Do this now:"
+  echo "    1. Open  https://github.com/settings/keys"
+  echo "    2. Find the key you just added (titled after this Mac)"
+  echo "    3. Click  'Configure SSO'  next to it"
+  echo "    4. Click  'Authorize'  next to ${GITHUB_ORG}"
+  echo "    5. Complete the Microsoft/SSO sign-in if it asks"
+  echo ""
+  echo "  If there's no 'Configure SSO' button, you're probably not yet a member"
+  echo "  of the ${GITHUB_ORG} org — ask your buddy to invite you and accept the"
+  echo "  invitation email first."
+  echo ""
+}

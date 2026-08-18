@@ -34,7 +34,9 @@ fi
 #   3. Copies the public key to your clipboard and waits while you paste it
 #      into https://github.com/settings/ssh/new
 #   4. Verifies GitHub now accepts the key.
-#   5. Sets your global git identity (user.name + user.email).
+#   5. Verifies the key is authorised for the moneymeans org (SAML SSO) —
+#      a SEPARATE click from adding the key, and the one people miss.
+#   6. Sets your global git identity (user.name + user.email).
 #
 # After this finishes, run `./setup.sh` to install all the actual tooling
 # (Homebrew, apps, runtimes, repos). setup.sh refuses to run if pre-setup
@@ -49,6 +51,12 @@ readonly MAX_GITHUB_KEY_ATTEMPTS=5
 readonly XCODE_POLL_INTERVAL_S=5
 readonly XCODE_MAX_POLL_ATTEMPTS=60   # 60 × 5s = 5 minutes
 readonly EMAIL_REGEX='^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'
+readonly GITHUB_ORG="moneymeans"
+readonly SSO_PROBE_REPO="mac-setup"
+# How many times to re-probe org access while the user sorts out SSO. Each
+# attempt is gated behind an Enter press, so this is a patience budget, not
+# a timeout.
+readonly MAX_SSO_ATTEMPTS=5
 
 # Official GitHub host keys, fingerprint-pinned by GitHub at
 # https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints
@@ -119,8 +127,53 @@ ssh_works() {
   echo "$output" | grep -q "successfully authenticated"
 }
 
+# Whether this key can actually READ moneymeans repos. Distinct from
+# ssh_works(): our org enforces SAML SSO, so a key that authenticates
+# fine against the account is still refused org content until it has
+# been separately authorised for the org. Echoes ok|sso|denied|offline.
+#
+# Duplicated from lib/common.sh::github_org_access on purpose — see the
+# self-contained note at the top of this file.
+org_access() {
+  local url="git@github.com:${GITHUB_ORG}/${SSO_PROBE_REPO}.git"
+  local output rc=0
+  output=$(GIT_TERMINAL_PROMPT=0 \
+           GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10" \
+           git ls-remote --exit-code -h "$url" 2>&1) || rc=$?
+  if (( rc == 0 )); then echo "ok"; return 0; fi
+  if echo "$output" | grep -qiE 'saml|single.sign.on|sso'; then
+    echo "sso"
+  elif echo "$output" | grep -qiE 'could not resolve|network is unreachable|connection timed out|temporary failure'; then
+    echo "offline"
+  else
+    echo "denied"
+  fi
+  return 0
+}
+
+print_sso_instructions() {
+  echo ""
+  echo -e "${YELLOW}Authorise your SSH key for the ${GITHUB_ORG} organisation (SAML SSO)${NC}"
+  echo ""
+  echo "  Adding the key to your account is only HALF the job. Our org enforces"
+  echo "  SAML single sign-on, so the key also has to be authorised for"
+  echo "  '${GITHUB_ORG}' before GitHub will let you clone anything."
+  echo ""
+  echo "  Do this now:"
+  echo "    1. Open  https://github.com/settings/keys"
+  echo "    2. Find the key you just added (titled after this Mac)"
+  echo "    3. Click  'Configure SSO'  next to it"
+  echo "    4. Click  'Authorize'  next to ${GITHUB_ORG}"
+  echo "    5. Complete the Microsoft/SSO sign-in if it asks"
+  echo ""
+  echo "  If there's no 'Configure SSO' button, you're probably not yet a member"
+  echo "  of the ${GITHUB_ORG} org — ask your buddy to invite you and accept the"
+  echo "  invitation email first."
+  echo ""
+}
+
 # ── 1/4 Xcode Command Line Tools ──────────────────────────────────────
-section "1/4  Xcode Command Line Tools"
+section "1/5  Xcode Command Line Tools"
 
 if xcode-select -p &>/dev/null && [[ -d "$(xcode-select -p)" ]]; then
   ok "Xcode Command Line Tools already installed ($(xcode-select -p))"
@@ -144,7 +197,7 @@ else
 fi
 
 # ── 2/4 SSH key + known_hosts ────────────────────────────────────────
-section "2/4  SSH key"
+section "2/5  SSH key"
 
 SSH_DIR="$HOME/.ssh"
 SSH_KEY="$SSH_DIR/id_ed25519"
@@ -197,7 +250,7 @@ ssh-add --apple-use-keychain "$SSH_KEY" 2>/dev/null \
   || true
 
 # ── 3/4 Upload to GitHub + verify ────────────────────────────────────
-section "3/4  Upload to GitHub"
+section "3/5  Upload to GitHub"
 
 if ssh_works; then
   ok "GitHub already accepts this key — skipping upload step"
@@ -229,8 +282,90 @@ else
   done
 fi
 
-# ── 4/4 Git identity ─────────────────────────────────────────────────
-section "4/4  Git identity"
+# ── 4/5 Authorise the key for the org (SAML SSO) ───────────────────
+# The step that cost a new starter half a morning in August 2026.
+#
+# ssh_works() above proves the key is on the ACCOUNT. It says nothing about
+# whether the key may read moneymeans repos — the org enforces SAML SSO, and
+# GitHub requires a SECOND, separate authorisation per key for that. Nothing
+# in the "GitHub now accepts the key" message hints at this, so the natural
+# next step (setup.sh cloning a repo) failed with an SSO error that read
+# like a contradiction of what pre-setup had just said.
+#
+# So we prove org read access here, before pre-setup claims success, and
+# refuse to finish quietly until it works or the user explicitly opts out.
+section "4/5  Authorise the key for ${GITHUB_ORG} (SAML SSO)"
+
+sso_state="$(org_access)"
+
+if [[ "$sso_state" == "ok" ]]; then
+  ok "Your key can read ${GITHUB_ORG} repos — SSO is already authorised"
+else
+  case "$sso_state" in
+    sso)
+      warn "GitHub accepts your key, but it is NOT yet authorised for ${GITHUB_ORG}"
+      ;;
+    denied)
+      warn "Your key authenticates, but ${GITHUB_ORG}/${SSO_PROBE_REPO} could not be read"
+      info "Usually this is SSO authorisation; it can also mean you're not in the org yet."
+      ;;
+    offline)
+      warn "Couldn't reach github.com to check org access (network?)"
+      ;;
+  esac
+
+  print_sso_instructions
+
+  # Gate on a real probe, not on the user's word. A new starter can't be
+  # expected to know whether what they clicked was the right thing, so
+  # "I've done it" is verified rather than trusted.
+  for attempt in $(seq 1 "$MAX_SSO_ATTEMPTS"); do
+    # A failed read is EOF (stdin closed) — stop rather than burning the
+    # remaining attempts against a prompt nobody can answer.
+    if ! read -rp "Press Enter once you've clicked 'Authorize' (or type 'skip' to continue anyway): " sso_reply; then
+      warn "Input closed — skipping the SSO check"
+      break
+    fi
+    if [[ "$sso_reply" == "skip" ]]; then
+      warn "Skipping the SSO check at your request — cloning in setup.sh will likely fail"
+      break
+    fi
+
+    sso_state="$(org_access)"
+    if [[ "$sso_state" == "ok" ]]; then
+      ok "Confirmed — your key can now read ${GITHUB_ORG} repos"
+      break
+    fi
+
+    if (( attempt == MAX_SSO_ATTEMPTS )); then
+      err "Still can't read ${GITHUB_ORG} repos after $MAX_SSO_ATTEMPTS attempts."
+      echo ""
+      echo "Things to check, in order:"
+      echo "  1. Are you a member of the ${GITHUB_ORG} org?"
+      echo "     Open https://github.com/orgs/${GITHUB_ORG}/people and look for yourself."
+      echo "     If you're not there, ask your buddy for an invite and accept the email."
+      echo "  2. Did you click 'Configure SSO' on the RIGHT key?"
+      echo "     https://github.com/settings/keys — the key for THIS Mac, not an old one."
+      echo "  3. Is the org showing as 'Authorized' (not merely listed) for that key?"
+      echo ""
+      echo "  Or hand it to Claude Code — it can read the real error and diagnose:"
+      echo -e "     ${GREEN}claude \"my SSH key cannot read ${GITHUB_ORG} repos, help me fix it\"${NC}"
+      echo ""
+      warn "Continuing so you can still set your git identity, but ./setup.sh will"
+      warn "  not be able to clone until this is fixed. Re-run ./pre-setup.sh after."
+      break
+    fi
+
+    case "$sso_state" in
+      sso)     warn "Still refused with an SSO error — the key isn't authorised yet. Try again." ;;
+      denied)  warn "Still refused. Double-check you're a member of the ${GITHUB_ORG} org." ;;
+      offline) warn "Still can't reach github.com — check your network, then try again." ;;
+    esac
+  done
+fi
+
+# ── 5/5 Git identity ─────────────────────────────────────────────────
+section "5/5  Git identity"
 
 CURRENT_NAME=$(git config --global user.name 2>/dev/null || true)
 CURRENT_EMAIL=$(git config --global user.email 2>/dev/null || true)

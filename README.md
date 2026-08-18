@@ -27,6 +27,7 @@ pre-setup.sh     ── ~10 min, requires you watching it ──
   ├─ Generate ed25519 SSH key (no passphrase — see "SSH key" note below)
   ├─ Copy public key to clipboard + pause for upload to GitHub
   ├─ Verify GitHub accepts the key
+  ├─ Verify the key is SSO-authorised for the moneymeans org  ← easy to miss
   └─ Set git user.name + user.email
 
 setup.sh         ── ~20-30 min, mostly unattended ─────
@@ -37,12 +38,56 @@ setup.sh         ── ~20-30 min, mostly unattended ─────
   ├─ .NET 10 SDK + CSharpier
   ├─ Claude Code CLI (native installer)
   ├─ Oh My Zsh
-  ├─ Launch Docker Desktop + wait for daemon
+  ├─ Launch Docker Desktop + wait for daemon (installs the cask if brew missed it)
   ├─ Clone the repos you nominate (or via MAC_SETUP_REPOS env var)
+  ├─ Hand your work folder to claude-herder as its BASE_DIR
   ├─ Optional project bootstrap (MAC_SETUP_PROJECT env var)
-  └─ GPG commit signing (reuses an existing key, or generates RSA 4096; prints
-     the public key + tells you to paste it at github.com/settings/gpg/new)
+  ├─ GPG commit signing (reuses an existing key, or generates RSA 4096; prints
+  │  the public key + tells you to paste it at github.com/settings/gpg/new)
+  └─ Per-stage status report: ✓ / ⚠ / ✗ per stage, with a copy-pasteable fix
+     for anything that didn't work
 ```
+
+### SAML SSO — the step people miss
+
+Our GitHub org enforces SAML single sign-on. Adding your SSH key to your
+account is only half the job: **the key must also be authorised for the
+`moneymeans` org**, which is a separate click. Until you do it, every
+`git clone` fails with an SSO error even though `ssh -T git@github.com`
+reports success — which reads like a contradiction if you don't know
+about this.
+
+`pre-setup.sh` now proves org read access (not just key acceptance) before
+it reports success, and won't finish quietly until it works. If a clone
+still gets refused, `setup.sh` detects the SSO error specifically and
+offers to retry, skip, or hand the problem to Claude Code — you don't have
+to restart the whole run.
+
+To do it by hand: https://github.com/settings/keys → find your key →
+**Configure SSO** → **Authorize** next to `moneymeans`.
+
+### The end-of-run report
+
+Every stage records what actually happened, and the last thing `setup.sh`
+prints is generated from those records:
+
+```
+  ✓  Homebrew + Brewfile  all formulae and casks present
+  ✗  Docker Desktop       not installed (cask install failed)
+  ⚠  GitHub CLI auth      not signed in
+  –  Project bootstrap    skipped (MAC_SETUP_PROJECT not set)
+
+2 thing(s) need your attention — copy/paste to fix:
+  1. Docker Desktop — not installed (cask install failed)
+     brew install --cask docker-desktop  # then: open -a Docker
+  2. GitHub CLI auth — not signed in
+     gh auth login
+```
+
+This replaced a hardcoded "Installed / verified" list that claimed
+"Docker Desktop (daemon running)" on runs where Docker had never
+installed. If a stage half-works, the report says so and gives you the
+command that finishes it.
 
 ## Quick start — for new starters
 
@@ -213,13 +258,20 @@ lib/
                          setup.sh's closing block launches iTerm so the user
                          lands in our terminal of choice when setup ends
   macos_defaults.sh      keyboard, Finder, firewall, screen-lock defaults
-  docker.sh              launches Docker Desktop and waits for the daemon
+  docker.sh              installs the docker-desktop cask if brew bundle missed
+                         it, launches Docker Desktop, waits for the daemon, and
+                         reports which of the two failed if it doesn't come up
   repos.sh               interactive (or env-driven) clone of moneymeans/<repo>;
                          default = claude-herder only (herder clones MoneyStory
                          itself); registers an explicitly-named MoneyStory
-                         clone in ~/.claude-sessions-projects
-  claude_herder.sh       runs `make install` + `make start` on claude-herder,
-                         backgrounds the server, opens http://localhost:7682/
+                         clone in ~/.claude-sessions-projects. Detects SAML SSO
+                         refusals specifically and offers retry / skip / ask-Claude
+  claude_herder.sh       seeds BASE_DIR in ~/.claude-sessions.conf from the work
+                         folder you chose (so herder doesn't ask again), then runs
+                         `make install` + `make start`, backgrounds the server,
+                         opens http://localhost:7682/
+  status.sh              the step registry (step_ok/warn/fail/skip) and the
+                         generated end-of-run report
   project_bootstrap.sh   generic per-project bootstrap driven by MAC_SETUP_PROJECT
   auth_clis.sh           guided gh / az / claude browser OAuth (skippable per-CLI)
   gpg_signing.sh         GPG commit signing — gnupg + pinentry-mac, key reuse-or-

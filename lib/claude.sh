@@ -22,12 +22,14 @@ LOCAL_BIN_BLOCK
 
 if have claude; then
   ok "Claude Code already installed ($(claude --version 2>/dev/null | head -1 || command -v claude))"
+  step_ok "Claude Code" "$(claude --version 2>/dev/null | head -1 || echo 'on PATH')"
   ensure_local_bin_on_path
   return 0 2>/dev/null || exit 0
 fi
 
 if [[ -x "$CLAUDE_BIN" ]]; then
   ok "Claude Code already installed at $CLAUDE_BIN"
+  step_ok "Claude Code" "installed at $CLAUDE_BIN"
   ensure_local_bin_on_path
   return 0 2>/dev/null || exit 0
 fi
@@ -39,8 +41,11 @@ curl -fsSL https://claude.ai/install.sh | bash
 # permission glitch). Don't claim success unless the binary is actually there.
 if [[ -x "$CLAUDE_BIN" ]]; then
   ok "Claude Code installed at $CLAUDE_BIN"
+  step_ok "Claude Code" "installed at $CLAUDE_BIN"
 else
   warn "Claude Code installer ran but $CLAUDE_BIN is missing — re-run setup.sh or install manually from claude.ai"
+  step_fail "Claude Code" "installer ran but the binary is missing" \
+    "curl -fsSL https://claude.ai/install.sh | bash"
 fi
 
 ensure_local_bin_on_path

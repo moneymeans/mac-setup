@@ -13,6 +13,8 @@
 
 if ! have mise; then
   warn "mise not on PATH yet. Re-run setup.sh after restarting the shell."
+  step_fail "Node.js (mise)" "mise not on PATH" \
+    "brew install mise && ./setup.sh"
   return 0 2>/dev/null || exit 0
 fi
 
@@ -35,3 +37,17 @@ append_block "$ZSHRC" "mise" <<'MISE_BLOCK' || true
 # mise — polyglot version manager
 eval "$(mise activate zsh)"
 MISE_BLOCK
+
+# Verify rather than assume: `mise use --global` can succeed while the
+# shim isn't resolvable yet, and a Node that isn't runnable is not a
+# working Node — reporting it as installed would be the same kind of
+# optimistic lie the Docker stage used to tell.
+if node_version="$(node --version 2>/dev/null)"; then
+  step_ok "Node.js (mise)" "$node_version"
+elif mise_node="$(mise current node 2>/dev/null)" && [[ -n "$mise_node" ]]; then
+  step_warn "Node.js (mise)" "mise has $mise_node but 'node' isn't on PATH in this shell" \
+    "exec zsh   # then: node --version"
+else
+  step_fail "Node.js (mise)" "no usable Node found" \
+    "mise use --global node@lts && exec zsh"
+fi

@@ -68,6 +68,7 @@ fi
 LIB_FILES=(
   Brewfile
   lib/common.sh
+  lib/status.sh
   lib/preflight.sh
   lib/sudo.sh
   lib/homebrew.sh
@@ -102,6 +103,12 @@ fi
 
 # shellcheck disable=SC1091
 source "$REPO_DIR/lib/common.sh"
+# Must load before any stage runs: every module records its outcome here,
+# and the end-of-run report is generated from those records. Sourced after
+# common.sh so its real step_* functions replace common.sh's no-op
+# fallbacks (which exist for the standalone entry points).
+# shellcheck disable=SC1091
+source "$REPO_DIR/lib/status.sh"
 
 # ── Welcome banner ─────────────────────────────────────────────────────
 section "Money Means — Mac Developer Setup" "$GREEN"
@@ -118,22 +125,24 @@ Here's what's about to happen, in order:
   6.  Node (mise + LTS), .NET 10 SDK, CSharpier, Claude Code
   7.  Itsycal + Rectangle + iTerm2 config (autostart + sensible defaults)
   8.  macOS defaults (fast key repeat, Finder dev settings, firewall, screen lock)
-  9.  Docker Desktop — launches and waits for the daemon
+  9.  Docker Desktop — installs it if brew missed it, then waits for the daemon
   10. Repo cloning — default = claude-herder (press Enter to accept;
       type names to override; 'none' to skip)
-  11. Bootstrap claude-herder if cloned — `make install` + `make start`,
-      then opens http://localhost:7682/ (herder clones MoneyStory itself)
+  11. Bootstrap claude-herder if cloned — hands it your work folder, then
+      `make install` + `make start`, and opens http://localhost:7682/
+      (herder clones MoneyStory itself)
   12. Project bootstrap — optional, only if MAC_SETUP_PROJECT is set
   13. CLI auth — we'll walk you through `gh`, `az`, and `claude` sign-ins
   14. GPG commit signing — generates a key and tells you to add it to GitHub
-  15. Summary + "next steps" you still need to do by hand
+  15. A per-stage report: what worked, what didn't, and the exact command
+      to fix anything that didn't
 
 Things to know:
   • Stay nearby for the brew bundle stage — Docker/Teams may prompt for
     your password despite the prewarm (macOS quirk).
   • Every step is idempotent — re-running setup.sh is always safe.
-  • If anything warns, the final banner turns yellow instead of green so
-    you'll know to scroll up.
+  • Nothing is reported as done unless it was actually verified. The report
+    at the end is the source of truth — read it before you walk away.
   • Ctrl-C is safe at any point. Re-run to pick up where you left off.
 
 WELCOME
@@ -233,27 +242,31 @@ source "$REPO_DIR/lib/auth_clis.sh"
 source "$REPO_DIR/lib/gpg_signing.sh"
 
 # ── Summary ────────────────────────────────────────────────────────────
-if (( SETUP_HAD_WARNINGS == 0 )); then
-  section "Setup complete!" "$GREEN"
+# The report is GENERATED from what each stage recorded (lib/status.sh),
+# not from a hardcoded list. The old list printed "Docker Desktop (daemon
+# running)" unconditionally — including on the run where Docker had never
+# installed — so the last thing a new starter read was wrong. A generated
+# report cannot drift from what actually happened.
+if [[ -n "${MAC_SETUP_PROJECT:-}" && ! -d "${WORK_DIR:-$HOME/work}/${MAC_SETUP_PROJECT}" ]]; then
+  step_warn "Project ($MAC_SETUP_PROJECT)" "requested but not found in ${WORK_DIR:-$HOME/work}" \
+    "Check the name, or clone it: cd ${WORK_DIR:-$HOME/work} && git clone git@github.com:${GITHUB_ORG}/${MAC_SETUP_PROJECT}.git"
+elif [[ -z "${MAC_SETUP_PROJECT:-}" ]]; then
+  step_skip "Project bootstrap" "(MAC_SETUP_PROJECT not set)"
+fi
+$DO_CLONE || step_skip "Repo clone" "(--no-clone)"
+
+fail_count=$(step_count fail)
+warn_count=$(step_count warn)
+
+if (( fail_count > 0 )); then
+  section "Setup finished — ${fail_count} thing(s) FAILED" "$RED"
+elif (( warn_count > 0 )); then
+  section "Setup finished — ${warn_count} thing(s) need attention" "$YELLOW"
 else
-  section "Setup finished with WARNINGS — scroll up" "$YELLOW"
+  section "Setup complete — everything verified!" "$GREEN"
 fi
 
-echo "Installed / verified:"
-echo "  - Homebrew + Brewfile (apps + CLI tools)"
-echo "  - Browsers (per your selection)"
-echo "  - mise + Node.js LTS"
-echo "  - .NET 10 SDK + CSharpier"
-echo "  - Claude Code CLI"
-echo "  - Oh My Zsh"
-echo "  - Docker Desktop (daemon running)"
-echo "  - GPG commit signing (key generated, git configured)"
-if $DO_CLONE; then
-  echo "  - Cloned repos under ${WORK_DIR:-$HOME/work}"
-fi
-if [[ -n "${MAC_SETUP_PROJECT:-}" && -d "${WORK_DIR:-$HOME/work}/${MAC_SETUP_PROJECT}" ]]; then
-  echo "  - Bootstrapped $MAC_SETUP_PROJECT"
-fi
+step_report
 
 echo ""
 echo -e "${YELLOW}Next steps — these need a human:${NC}"

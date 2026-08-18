@@ -138,3 +138,4 @@ if [[ -n "$FW" && -x "$FW" ]]; then
 fi
 
 ok "macOS defaults applied"
+step_ok "macOS defaults" "key repeat, Finder, firewall, screen lock"

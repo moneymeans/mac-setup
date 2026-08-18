@@ -54,3 +54,4 @@ else
 fi
 
 ok "iTerm2 configured"
+step_ok "iTerm2" "configured + auto-start"

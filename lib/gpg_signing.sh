@@ -297,20 +297,45 @@ TEST_REPO="$(mktemp -d -t gpg-signing-test.XXXXXX)"
   git config user.email "$GIT_EMAIL"
   # --allow-empty: no tree changes needed to test signing. -S is
   # redundant with commit.gpgsign=true but makes the intent explicit.
+  # Exit codes are the channel back to the parent shell: this runs in a
+  # subshell (for the cd), so a step_* call in here would be discarded
+  # along with the subshell's environment. 0 = verified, 2 = committed but
+  # unverified, 1 = signing itself failed.
   if git commit --allow-empty -S -m "gpg signing test" >/dev/null 2>&1; then
     if git log --show-signature -1 2>&1 | grep -q "Good signature"; then
       ok "Signed test commit verified — GPG signing is working."
+      exit 0
     else
       warn "Test commit was created but 'git log --show-signature' didn't report 'Good signature'."
       warn "Run 'git log --show-signature -1' inside a real repo to see why."
+      exit 2
     fi
   else
     warn "Test commit failed to sign. Try opening a NEW terminal (so GPG_TTY is set) and run:"
     warn "  git commit --allow-empty -S -m test"
     warn "If that still fails, run: gpg --sign /dev/null  to see the underlying error."
+    exit 1
   fi
-)
+) && sign_test_rc=0 || sign_test_rc=$?
+# `|| sign_test_rc=$?` is load-bearing, not defensive noise: setup.sh runs
+# under `set -e`, so a bare `( … ); rc=$?` would abort the ENTIRE script the
+# moment the subshell exits non-zero — i.e. exactly when signing is broken
+# and the user most needs the remediation text below. Putting the subshell
+# on the left of `&&`/`||` makes it a tested command, which `set -e` exempts.
 rm -rf "$TEST_REPO" || true
+
+# Signing working locally is only half of it — GitHub can't show "Verified"
+# until the public key is uploaded, and that's a manual step nobody can
+# verify from here. So even the success case is a warn: it's the one item
+# that is deliberately left unfinished when setup.sh ends.
+case "$sign_test_rc" in
+  0) step_warn "GPG commit signing" "working locally — public key not yet on GitHub" \
+       "Paste your key (already in your clipboard) at https://github.com/settings/gpg/new" ;;
+  2) step_warn "GPG commit signing" "commit signed but signature didn't verify" \
+       "git log --show-signature -1   # inside a real repo, to see why" ;;
+  *) step_fail "GPG commit signing" "test commit could not be signed" \
+       "gpg --sign /dev/null   # shows the underlying error" ;;
+esac
 
 # ── 9. Next-step instructions ─────────────────────────────────────────
 echo ""
