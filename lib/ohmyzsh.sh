@@ -41,6 +41,7 @@ fi
 
 if [[ "$want" != "yes" ]]; then
   info "Skipping Oh My Zsh install (set MAC_SETUP_OMZ=yes to install without prompt)"
+  step_skip "Oh My Zsh" "(you declined)"
   return 0 2>/dev/null || exit 0
 fi
 
@@ -53,6 +54,13 @@ fi
 
 # Make sure .zshrc exists before append_block tries to touch it.
 [[ -f "$ZSHRC" ]] || touch "$ZSHRC"
+
+if [[ -d "$HOME/.oh-my-zsh" ]]; then
+  step_ok "Oh My Zsh" "installed"
+else
+  step_fail "Oh My Zsh" "install did not complete" \
+    'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"'
+fi
 
 if append_block "$ZSHRC" "oh-my-zsh" <<'OMZ_BLOCK'; then
 # Oh My Zsh — theme + plugin framework

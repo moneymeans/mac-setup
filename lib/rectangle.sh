@@ -79,3 +79,4 @@ if (( changed == 1 )) && pgrep -x Rectangle &>/dev/null; then
 fi
 
 ok "Rectangle configured"
+step_ok "Rectangle" "configured + auto-start"

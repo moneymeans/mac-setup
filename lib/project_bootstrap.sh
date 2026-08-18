@@ -67,6 +67,11 @@ fi
 if [[ "${MAC_SETUP_PROJECT_NEEDS_DOCKER:-0}" == "1" ]] && ! docker info &>/dev/null; then
   warn "Docker daemon not running — skipping 'make install'."
   warn "Start Docker Desktop, then re-run: cd $PROJECT_DIR && make install"
+  # Chains off the Docker stage's own failure: this is a consequence, not
+  # an independent problem, but it needs its own line so the user knows
+  # the project was left un-bootstrapped rather than merely un-Dockered.
+  step_fail "Project ($MAC_SETUP_PROJECT)" "not bootstrapped — Docker daemon down" \
+    "open -a Docker   # wait for it, then: cd $PROJECT_DIR && make install"
   return 0 2>/dev/null || exit 0
 fi
 
@@ -85,6 +90,7 @@ fi
 
 if ! $needs_install; then
   ok "$MAC_SETUP_PROJECT already bootstrapped (.venv up to date with requirements)"
+  step_ok "Project ($MAC_SETUP_PROJECT)" "already bootstrapped"
   return 0 2>/dev/null || exit 0
 fi
 
@@ -92,7 +98,10 @@ if [[ -f "$PROJECT_DIR/Makefile" ]]; then
   info "Running 'make install' in $MAC_SETUP_PROJECT..."
   if (cd "$PROJECT_DIR" && make install); then
     ok "$MAC_SETUP_PROJECT install complete"
+    step_ok "Project ($MAC_SETUP_PROJECT)" "make install complete"
   else
     warn "$MAC_SETUP_PROJECT install reported issues. Re-run: cd $PROJECT_DIR && make install"
+    step_fail "Project ($MAC_SETUP_PROJECT)" "make install failed" \
+      "cd $PROJECT_DIR && make install"
   fi
 fi

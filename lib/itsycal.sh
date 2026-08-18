@@ -79,3 +79,4 @@ if (( changed == 1 )) && pgrep -x Itsycal &>/dev/null; then
 fi
 
 ok "Itsycal configured"
+step_ok "Itsycal" "configured + auto-start"

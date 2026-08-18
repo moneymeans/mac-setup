@@ -95,13 +95,23 @@ DOTNET_BLOCK
 
 if ! have dotnet; then
   warn "dotnet still not on PATH — skipping CSharpier install"
+  step_fail ".NET SDK" "dotnet not on PATH" \
+    "brew install --cask dotnet-sdk   # or re-run ./setup.sh"
   return 0 2>/dev/null || exit 0
 fi
 
+step_ok ".NET SDK" "$(dotnet --version 2>/dev/null || echo installed)"
+
 if dotnet tool list -g 2>/dev/null | grep -q 'csharpier'; then
   ok "CSharpier already installed"
+  step_ok "CSharpier" "installed"
 else
   info "Installing CSharpier..."
-  dotnet tool install -g csharpier
-  ok "CSharpier installed"
+  if dotnet tool install -g csharpier; then
+    ok "CSharpier installed"
+    step_ok "CSharpier" "installed"
+  else
+    warn "CSharpier install failed — C# files won't auto-format"
+    step_warn "CSharpier" "install failed" "dotnet tool install -g csharpier"
+  fi
 fi
