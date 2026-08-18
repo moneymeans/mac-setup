@@ -34,17 +34,51 @@ fi
 
 # ── Make sure the app is actually on disk ──────────────────────────────
 # `brew list --cask docker-desktop` and the /Applications check can
-# disagree: the cask can be registered while the app bundle was removed by
-# hand, or (more often here) the cask install failed and neither exists.
-# We treat the app bundle as the source of truth, since that's what
-# `open -a Docker` needs.
+# disagree, and the right repair depends on WHICH way round they disagree.
+# The cask's own artifact list installs to /Applications/Docker.app, so
+# that path is the source of truth for `open -a Docker`.
+#
+# Docker Desktop can also live elsewhere entirely (a per-user install
+# under ~/Applications, or a hand-dragged .dmg copy). Reaching here only
+# means `docker info` failed, which for those installs usually means "not
+# running yet" — not "not installed". Overwriting them would be wrong, so
+# we look before we install.
 if [[ ! -d "/Applications/Docker.app" ]]; then
+  # Anything that looks like an existing install we must not clobber.
+  docker_found_elsewhere=""
+  for candidate in "$HOME/Applications/Docker.app" "/Applications/Utilities/Docker.app"; do
+    [[ -d "$candidate" ]] && { docker_found_elsewhere="$candidate"; break; }
+  done
+
+  if [[ -n "$docker_found_elsewhere" ]]; then
+    # Present but not running. A human needs to launch it; installing a
+    # second copy would leave two Dockers fighting over the same daemon.
+    warn "Docker.app is not in /Applications, but found at $docker_found_elsewhere"
+    step_warn "$DOCKER_STEP" "installed at $docker_found_elsewhere, daemon not running" \
+      "open -a \"$docker_found_elsewhere\"  # then: docker info"
+    return 0 2>/dev/null || exit 0
+  fi
+
   warn "Docker.app is not in /Applications — brew bundle did not install it"
   info "Attempting to install the $DOCKER_CASK cask now (this can take a few minutes)..."
 
-  # `--force` so a half-registered cask from a failed bundle run doesn't
-  # make brew skip the reinstall with "already installed".
-  if brew install --cask --force "$DOCKER_CASK"; then
+  # Deliberately NOT `--force`. For casks --force means "overwrite existing
+  # files", which is a blind overwrite of whatever is already there — the
+  # opposite of idempotent on a machine that is already set up.
+  #
+  # The case --force was added for is real but narrow: brew still has the
+  # cask registered while the app bundle is gone, so a plain `install` exits
+  # "already installed" and repairs nothing. `reinstall` fixes exactly that
+  # without the overwrite semantics, and is a no-op-and-reinstall rather
+  # than a clobber. We know the bundle is absent — checked directly above.
+  if brew list --cask "$DOCKER_CASK" &>/dev/null; then
+    info "brew still has $DOCKER_CASK registered but the app is gone — reinstalling"
+    docker_install_cmd=(brew reinstall --cask "$DOCKER_CASK")
+  else
+    docker_install_cmd=(brew install --cask "$DOCKER_CASK")
+  fi
+
+  if "${docker_install_cmd[@]}"; then
     ok "Docker Desktop cask installed"
   else
     err "Could not install the $DOCKER_CASK cask automatically"
