@@ -34,7 +34,7 @@ if [[ -n "${CLONED_REPOS+x}" ]]; then
     fi
   done
 fi
-HERDER_DIR="${WORK_DIR:-$HOME/work}/claude-herder"
+HERDER_DIR="$(work_dir)/claude-herder"
 if ! $herder_present && [[ -d "$HERDER_DIR/.git" ]]; then
   herder_present=true
 fi
@@ -65,7 +65,7 @@ section "Bootstrap claude-herder"
 # live session clones and silently repointing it would orphan them. A
 # disagreement is surfaced in the final report instead.
 HERDER_CONF="$HOME/.claude-sessions.conf"
-herder_base_dir="${WORK_DIR:-$HOME/work}"
+herder_base_dir="$(work_dir)"
 
 # `KEY="value"`, `KEY=value`, and leading whitespace are all valid in this
 # conf format (herder's lib/config.py::_get_conf_value strips quotes), so

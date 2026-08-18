@@ -25,7 +25,7 @@ if [[ -z "${MAC_SETUP_PROJECT:-}" ]]; then
   return 0 2>/dev/null || exit 0
 fi
 
-PROJECT_DIR="${WORK_DIR:-$HOME/work}/$MAC_SETUP_PROJECT"
+PROJECT_DIR="$(work_dir)/$MAC_SETUP_PROJECT"
 PROJECT_VENV="$PROJECT_DIR/.venv"
 
 if [[ ! -d "$PROJECT_DIR" ]]; then

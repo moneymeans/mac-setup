@@ -299,6 +299,28 @@ github_ssh_ok() {
   return 1
 }
 
+# ── Work folder ────────────────────────────────────────────────────────
+# Where the user's checked-out repos live. lib/repos.sh owns the full
+# resolution (it can also prompt), exports WORK_DIR, and creates the
+# directory. But repos.sh is skipped entirely under --no-clone, so every
+# later module needs an answer for the case where WORK_DIR is unset.
+#
+# Those modules each used to inline `${WORK_DIR:-$HOME/work}`, which threw
+# away a MAC_SETUP_WORK_DIR the user had explicitly set: `--no-clone` with
+# MAC_SETUP_WORK_DIR=~/dev looked for repos in ~/work, reported
+# claude-herder as "not cloned" while it sat in ~/dev, and could seed
+# herder's BASE_DIR with a path that doesn't exist.
+#
+# Resolve it in one place instead. Non-interactive on purpose: this is the
+# fallback for runs that never reached the prompt, so it must not block.
+work_dir() {
+  local dir="${WORK_DIR:-${MAC_SETUP_WORK_DIR:-$HOME/work}}"
+  # Expand ~ / $HOME if typed literally, matching repos.sh.
+  dir="${dir/#\~/$HOME}"
+  dir="${dir/#\$HOME/$HOME}"
+  printf '%s' "$dir"
+}
+
 # ── Step-outcome fallbacks ─────────────────────────────────────────────
 # lib/status.sh defines the real step registry and the end-of-run report.
 # It is sourced by setup.sh, but NOT by the standalone entry points
