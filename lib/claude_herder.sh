@@ -34,7 +34,10 @@ if [[ -n "${CLONED_REPOS+x}" ]]; then
     fi
   done
 fi
-HERDER_DIR="$(work_dir)/claude-herder"
+# A bad work folder must not reach herder's BASE_DIR: the seeding block
+# below only ADDS the key, so a nonsense value written once is sticky.
+work_dir_or_report || return 0 2>/dev/null || exit 0
+HERDER_DIR="$WORK_DIR_RESOLVED/claude-herder"
 if ! $herder_present && [[ -d "$HERDER_DIR/.git" ]]; then
   herder_present=true
 fi
@@ -65,7 +68,7 @@ section "Bootstrap claude-herder"
 # live session clones and silently repointing it would orphan them. A
 # disagreement is surfaced in the final report instead.
 HERDER_CONF="$HOME/.claude-sessions.conf"
-herder_base_dir="$(work_dir)"
+herder_base_dir="$WORK_DIR_RESOLVED"
 
 # `KEY="value"`, `KEY=value`, and leading whitespace are all valid in this
 # conf format (herder's lib/config.py::_get_conf_value strips quotes), so

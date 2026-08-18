@@ -38,27 +38,29 @@ fi
 # The cask's own artifact list installs to /Applications/Docker.app, so
 # that path is the source of truth for `open -a Docker`.
 #
-# Docker Desktop can also live elsewhere entirely (a per-user install
-# under ~/Applications, or a hand-dragged .dmg copy). Reaching here only
-# means `docker info` failed, which for those installs usually means "not
-# running yet" — not "not installed". Overwriting them would be wrong, so
-# we look before we install.
-if [[ ! -d "/Applications/Docker.app" ]]; then
-  # Anything that looks like an existing install we must not clobber.
-  docker_found_elsewhere=""
+# Docker Desktop can also live elsewhere (a per-user copy under
+# ~/Applications, or a hand-dragged .dmg). Reaching here only means
+# `docker info` failed, which for those installs usually means "not running
+# yet" — not "not installed". Installing a second copy on top would leave
+# two Dockers fighting over one daemon, so look before installing.
+#
+# DOCKER_APP_PATH is set once we have an app to launch; empty means we
+# still need to install one.
+DOCKER_APP_PATH=""
+
+if [[ -d "/Applications/Docker.app" ]]; then
+  DOCKER_APP_PATH="/Applications/Docker.app"
+else
   for candidate in "$HOME/Applications/Docker.app" "/Applications/Utilities/Docker.app"; do
-    [[ -d "$candidate" ]] && { docker_found_elsewhere="$candidate"; break; }
+    if [[ -d "$candidate" ]]; then
+      warn "Docker.app is not in /Applications, but found at $candidate"
+      DOCKER_APP_PATH="$candidate"
+      break
+    fi
   done
+fi
 
-  if [[ -n "$docker_found_elsewhere" ]]; then
-    # Present but not running. A human needs to launch it; installing a
-    # second copy would leave two Dockers fighting over the same daemon.
-    warn "Docker.app is not in /Applications, but found at $docker_found_elsewhere"
-    step_warn "$DOCKER_STEP" "installed at $docker_found_elsewhere, daemon not running" \
-      "open -a \"$docker_found_elsewhere\"  # then: docker info"
-    return 0 2>/dev/null || exit 0
-  fi
-
+if [[ -z "$DOCKER_APP_PATH" ]]; then
   warn "Docker.app is not in /Applications — brew bundle did not install it"
   info "Attempting to install the $DOCKER_CASK cask now (this can take a few minutes)..."
 
@@ -69,8 +71,8 @@ if [[ ! -d "/Applications/Docker.app" ]]; then
   # The case --force was added for is real but narrow: brew still has the
   # cask registered while the app bundle is gone, so a plain `install` exits
   # "already installed" and repairs nothing. `reinstall` fixes exactly that
-  # without the overwrite semantics, and is a no-op-and-reinstall rather
-  # than a clobber. We know the bundle is absent — checked directly above.
+  # without the overwrite semantics. We know the bundle is absent — checked
+  # directly above.
   if brew list --cask "$DOCKER_CASK" &>/dev/null; then
     info "brew still has $DOCKER_CASK registered but the app is gone — reinstalling"
     docker_install_cmd=(brew reinstall --cask "$DOCKER_CASK")
@@ -83,15 +85,17 @@ if [[ ! -d "/Applications/Docker.app" ]]; then
   else
     err "Could not install the $DOCKER_CASK cask automatically"
   fi
-fi
 
-# Re-check: the retry may have worked, or the app may have been installed
-# by another route (manual .dmg) since brew bundle ran.
-if [[ ! -d "/Applications/Docker.app" ]]; then
-  err "Docker.app still missing — the rest of setup will continue without Docker"
-  step_fail "$DOCKER_STEP" "not installed (cask install failed)" \
-    "brew install --cask docker-desktop  # then: open -a Docker"
-  return 0 2>/dev/null || exit 0
+  # Re-check: the install may have worked, or the app may have arrived by
+  # another route (manual .dmg) since brew bundle ran.
+  if [[ -d "/Applications/Docker.app" ]]; then
+    DOCKER_APP_PATH="/Applications/Docker.app"
+  else
+    err "Docker.app still missing — the rest of setup will continue without Docker"
+    step_fail "$DOCKER_STEP" "not installed (cask install failed)" \
+      "brew install --cask docker-desktop  # then: open -a Docker"
+    return 0 2>/dev/null || exit 0
+  fi
 fi
 
 # ── Start the daemon ───────────────────────────────────────────────────
@@ -100,7 +104,15 @@ fi
 # ask for a privileged-helper password. Both need a human, so a timeout
 # here is a legitimate "needs your attention", not a hard failure.
 info "Starting Docker Desktop..."
-open -a Docker
+# Launch the copy we actually found, which may be outside /Applications.
+if ! open -a "$DOCKER_APP_PATH"; then
+  # A stale drag-copy or partial bundle looks identical to a healthy one on
+  # a `-d` check; only `open` can tell the difference.
+  err "Could not launch $DOCKER_APP_PATH — it may be an incomplete copy"
+  step_warn "$DOCKER_STEP" "found at $DOCKER_APP_PATH but it would not launch" \
+    "Move or delete it, then re-run ./setup.sh to install Docker Desktop properly"
+  return 0 2>/dev/null || exit 0
+fi
 
 info "Waiting for the Docker daemon (up to ${DOCKER_WAIT_TIMEOUT_S}s)..."
 poll_attempts=$((DOCKER_WAIT_TIMEOUT_S / DOCKER_POLL_INTERVAL_S))

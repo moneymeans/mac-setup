@@ -56,8 +56,15 @@ WORK_DIR="${WORK_DIR/#\~/$HOME}"
 WORK_DIR="${WORK_DIR/#\$HOME/$HOME}"
 
 if [[ "$WORK_DIR" != /* ]]; then
+  # `exit 1` here used to kill setup.sh outright — this file is SOURCED, so
+  # the exit propagates to the parent and the end-of-run report never runs.
+  # The user got one error line and no summary, after Homebrew/Node/.NET/
+  # Docker had already succeeded. Every other failure in this module records
+  # a step and returns, so this one now does too.
   err "Work folder must be an absolute path (got: '$WORK_DIR')"
-  exit 1
+  step_fail "Repo clone" "work folder is not an absolute path: '$WORK_DIR'" \
+    "Re-run with an absolute path, e.g. MAC_SETUP_WORK_DIR=\"\$HOME/work\""
+  return 0 2>/dev/null || exit 0
 fi
 
 mkdir -p "$WORK_DIR"
