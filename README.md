@@ -190,6 +190,31 @@ Before they arrive, decide:
 the end, so the only manual terminal-switching needed is closing the
 Terminal.app window you ran setup from.)
 
+## Checking what's installed
+
+`./status.sh` answers "is this machine set up, and what's missing?" without
+running `setup.sh`. It is **read-only** — it installs nothing, starts
+nothing, and writes nothing, so it's safe on a working machine and safe to
+run repeatedly. Takes a few seconds.
+
+```bash
+./status.sh            # full report: brew, runtimes, auth, Docker, repos, shell
+./status.sh --brief    # problems only — skips the ✓ rows
+```
+
+It checks the same things `setup.sh` configures, and reads the package list
+from the `Brewfile` so it can't drift out of sync. Anything missing comes
+with a copy-pasteable fix, in the same ✓/⚠/✗ format as the end-of-setup
+report.
+
+Exit status is 0 when everything's in place and 1 when something needs
+attention, so it also works as a check in CI or a "is this machine ready?"
+gate.
+
+Use it when: a new starter says "I think setup worked?", something stopped
+working and you want to know what changed, or you want to confirm a fix
+landed without sitting through a full re-run.
+
 ## Re-running
 
 Both scripts short-circuit on a fully-configured machine. Useful patterns:
@@ -238,6 +263,7 @@ The full list lives in [`Brewfile`](./Brewfile) and the `lib/*.sh` modules.
 bootstrap.sh           tiny downloader — curl|bash entry point for new starters
 pre-setup.sh           self-contained; no lib/ — runs on a totally bare Mac
 setup.sh               entry point — flags, preflight, orchestration, curl|bash staging
+status.sh              read-only "what's installed?" report; installs nothing
 setup-gpg-signing.sh   standalone curl|bash entry point for existing engineers
                        who only need to add GPG commit signing
 Brewfile               declarative cask + formula list
