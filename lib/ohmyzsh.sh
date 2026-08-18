@@ -22,6 +22,10 @@ omz_loaded_in_rc() {
 
 if omz_loaded_in_rc; then
   ok "Oh My Zsh already loaded in $ZSHRC — leaving it alone"
+  # Record it: this is the common re-run path, and every other stage
+  # reports something on its already-done path. Without this the report
+  # silently omits Oh My Zsh on every run after the first.
+  step_ok "Oh My Zsh" "already loaded in ~/.zshrc"
   return 0 2>/dev/null || exit 0
 fi
 

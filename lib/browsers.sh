@@ -119,8 +119,16 @@ done
 
 if (( install_failed == 1 )); then
   warn "One or more browsers did not install — scroll up."
-  step_fail "Browsers" "failed: ${failed_browsers[*]}" \
-    "brew install --cask ${failed_casks[*]}"
+  # `:-` on both: a name rejected by the regex/known-list check above sets
+  # install_failed without appending to either array, and expanding an empty
+  # array under `set -u` aborts the whole run on bash 3.2.
+  if (( ${#failed_browsers[@]} > 0 )); then
+    step_fail "Browsers" "failed: ${failed_browsers[*]:-}" \
+      "brew install --cask ${failed_casks[*]:-}"
+  else
+    step_warn "Browsers" "skipped unrecognised name(s)" \
+      "Re-run with a valid name: MAC_SETUP_BROWSERS=\"chrome firefox\" ./setup.sh"
+  fi
 else
   step_ok "Browsers" "${selected_browsers[*]:-none selected}"
 fi

@@ -13,8 +13,33 @@
 # Skip the whole section entirely with MAC_SETUP_NO_AUTH=1 or when
 # stdin isn't a tty (curl|bash / CI).
 
+# Report each CLI's real auth state rather than "we showed you a prompt".
+# These are the sign-ins a new starter most often half-finishes, and an
+# unauthenticated gh is what makes herder's PR features silently empty.
+_report_cli_auth() {
+  if have gh && gh auth status &>/dev/null; then
+    step_ok "GitHub CLI auth" "signed in"
+  elif have gh; then
+    step_warn "GitHub CLI auth" "not signed in" "gh auth login"
+  else
+    step_fail "GitHub CLI auth" "gh not installed" "brew install gh && gh auth login"
+  fi
+
+  if have az && az account show &>/dev/null; then
+    step_ok "Azure CLI auth" "signed in"
+  elif have az; then
+    step_warn "Azure CLI auth" "not signed in" "az login"
+  else
+    step_fail "Azure CLI auth" "az not installed" "brew install azure-cli && az login"
+  fi
+}
+
 if [[ "${MAC_SETUP_NO_AUTH:-0}" == "1" ]] || [[ ! -t 0 ]]; then
   info "Skipping interactive CLI auth (no tty or MAC_SETUP_NO_AUTH=1)"
+  # The checks are non-interactive, so still report real auth state here.
+  # Without this the curl|bash and CI paths produce no auth rows at all —
+  # the report would look clean while gh is genuinely unauthenticated.
+  _report_cli_auth
   return 0 2>/dev/null || exit 0
 fi
 
@@ -99,21 +124,4 @@ fi
 
 ok "CLI authentication step complete"
 
-# Report each CLI's real auth state rather than "we showed you a prompt".
-# These are the sign-ins a new starter most often half-finishes, and an
-# unauthenticated gh is what makes herder's PR features silently empty.
-if have gh && gh auth status &>/dev/null; then
-  step_ok "GitHub CLI auth" "signed in"
-elif have gh; then
-  step_warn "GitHub CLI auth" "not signed in" "gh auth login"
-else
-  step_fail "GitHub CLI auth" "gh not installed" "brew install gh && gh auth login"
-fi
-
-if have az && az account show &>/dev/null; then
-  step_ok "Azure CLI auth" "signed in"
-elif have az; then
-  step_warn "Azure CLI auth" "not signed in" "az login"
-else
-  step_fail "Azure CLI auth" "az not installed" "brew install azure-cli && az login"
-fi
+_report_cli_auth

@@ -295,12 +295,18 @@ if (( clone_failed == 1 )); then
   if (( ${#SSO_BLOCKED_REPOS[@]} > 0 )); then
     step_fail "Repo clone" "SSO-blocked: ${SSO_BLOCKED_REPOS[*]}" \
       "Authorise your key at https://github.com/settings/keys (Configure SSO → Authorize), then: ./setup.sh"
-  else
-    step_fail "Repo clone" "failed: ${FAILED_REPOS[*]}" \
+  elif (( ${#FAILED_REPOS[@]} > 0 )); then
+    step_fail "Repo clone" "failed: ${FAILED_REPOS[*]:-}" \
       "cd ${WORK_DIR} && git clone git@github.com:${GITHUB_ORG}/<repo>.git"
+  else
+    # clone_failed was set by a rejected repo name or a non-git directory
+    # already sitting at $dest — neither appends to FAILED_REPOS, and
+    # expanding it empty under `set -u` would abort the run on bash 3.2.
+    step_warn "Repo clone" "skipped: bad name, or a non-git folder is in the way" \
+      "Check the names you typed, and ls ${WORK_DIR} for a stray folder"
   fi
 elif (( ${#CLONED_REPOS[@]} > 0 )); then
-  step_ok "Repo clone" "${CLONED_REPOS[*]} → $WORK_DIR"
+  step_ok "Repo clone" "${CLONED_REPOS[*]:-} → $WORK_DIR"
 else
   step_skip "Repo clone" "(nothing requested)"
 fi
