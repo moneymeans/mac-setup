@@ -299,6 +299,67 @@ github_ssh_ok() {
   return 1
 }
 
+# ── Work folder ────────────────────────────────────────────────────────
+# Where the user's checked-out repos live. lib/repos.sh owns the full
+# resolution (it can also prompt), exports WORK_DIR, and creates the
+# directory. But repos.sh is skipped entirely under --no-clone, so every
+# later module needs an answer for the case where WORK_DIR is unset.
+#
+# Those modules each used to inline `${WORK_DIR:-$HOME/work}`, which threw
+# away a MAC_SETUP_WORK_DIR the user had explicitly set: `--no-clone` with
+# MAC_SETUP_WORK_DIR=~/dev looked for repos in ~/work, reported
+# claude-herder as "not cloned" while it sat in ~/dev, and could seed
+# herder's BASE_DIR with a path that doesn't exist.
+#
+# Resolve it in one place instead. Non-interactive on purpose: this is the
+# fallback for runs that never reached the prompt, so it must not block.
+# Returns 0 and prints the resolved path; returns 1 and prints nothing if
+# the configured value is unusable, so callers can report a real failure
+# rather than acting on a nonsense path.
+work_dir() {
+  local dir="${WORK_DIR:-${MAC_SETUP_WORK_DIR:-$HOME/work}}"
+  # Expand ~ / $HOME if typed literally, matching repos.sh.
+  dir="${dir/#\~/$HOME}"
+  dir="${dir/#\$HOME/$HOME}"
+  # Trim surrounding whitespace — a pasted or quoted value can carry it,
+  # and " /Users/x/dev" would otherwise fail the absolute-path test below.
+  dir="${dir#"${dir%%[![:space:]]*}"}"
+  dir="${dir%"${dir##*[![:space:]]}"}"
+  # Must be absolute. repos.sh enforces this too (and exits), but under
+  # --no-clone repos.sh never runs, so without this a relative value like
+  # MAC_SETUP_WORK_DIR=dev would resolve against $PWD — and worse, get
+  # written verbatim into herder's BASE_DIR, where it is sticky: the
+  # seeding block below only ever ADDS the key, so a later corrected run
+  # warns about the disagreement instead of repairing it.
+  case "$dir" in
+    /*) ;;
+    *)  return 1 ;;
+  esac
+  printf '%s' "$dir"
+}
+
+# Resolve the work folder, or record a step failure and return 1.
+#
+# Sets WORK_DIR_RESOLVED rather than printing, deliberately: the step
+# registry in lib/status.sh is a set of plain shell arrays, so a step_fail
+# executed inside `$(...)` would be recorded in the subshell and thrown
+# away with it. Assigning to a variable keeps the recording in the
+# caller's shell, where the end-of-run report can see it.
+#
+# Usage:
+#   work_dir_or_report || return 0
+#   ... use "$WORK_DIR_RESOLVED" ...
+work_dir_or_report() {
+  local configured="${WORK_DIR:-${MAC_SETUP_WORK_DIR:-}}"
+  if ! WORK_DIR_RESOLVED="$(work_dir)"; then
+    err "Work folder must be an absolute path (got: '$configured')"
+    step_fail "Work folder" "not an absolute path: '$configured'" \
+      "Re-run with an absolute path, e.g. MAC_SETUP_WORK_DIR=\"\$HOME/dev\""
+    return 1
+  fi
+  return 0
+}
+
 # ── Step-outcome fallbacks ─────────────────────────────────────────────
 # lib/status.sh defines the real step registry and the end-of-run report.
 # It is sourced by setup.sh, but NOT by the standalone entry points

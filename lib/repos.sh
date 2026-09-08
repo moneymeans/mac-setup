@@ -56,8 +56,15 @@ WORK_DIR="${WORK_DIR/#\~/$HOME}"
 WORK_DIR="${WORK_DIR/#\$HOME/$HOME}"
 
 if [[ "$WORK_DIR" != /* ]]; then
+  # `exit 1` here used to kill setup.sh outright — this file is SOURCED, so
+  # the exit propagates to the parent and the end-of-run report never runs.
+  # The user got one error line and no summary, after Homebrew/Node/.NET/
+  # Docker had already succeeded. Every other failure in this module records
+  # a step and returns, so this one now does too.
   err "Work folder must be an absolute path (got: '$WORK_DIR')"
-  exit 1
+  step_fail "Repo clone" "work folder is not an absolute path: '$WORK_DIR'" \
+    "Re-run with an absolute path, e.g. MAC_SETUP_WORK_DIR=\"\$HOME/work\""
+  return 0 2>/dev/null || exit 0
 fi
 
 mkdir -p "$WORK_DIR"
@@ -295,12 +302,18 @@ if (( clone_failed == 1 )); then
   if (( ${#SSO_BLOCKED_REPOS[@]} > 0 )); then
     step_fail "Repo clone" "SSO-blocked: ${SSO_BLOCKED_REPOS[*]}" \
       "Authorise your key at https://github.com/settings/keys (Configure SSO → Authorize), then: ./setup.sh"
-  else
-    step_fail "Repo clone" "failed: ${FAILED_REPOS[*]}" \
+  elif (( ${#FAILED_REPOS[@]} > 0 )); then
+    step_fail "Repo clone" "failed: ${FAILED_REPOS[*]:-}" \
       "cd ${WORK_DIR} && git clone git@github.com:${GITHUB_ORG}/<repo>.git"
+  else
+    # clone_failed was set by a rejected repo name or a non-git directory
+    # already sitting at $dest — neither appends to FAILED_REPOS, and
+    # expanding it empty under `set -u` would abort the run on bash 3.2.
+    step_warn "Repo clone" "skipped: bad name, or a non-git folder is in the way" \
+      "Check the names you typed, and ls ${WORK_DIR} for a stray folder"
   fi
 elif (( ${#CLONED_REPOS[@]} > 0 )); then
-  step_ok "Repo clone" "${CLONED_REPOS[*]} → $WORK_DIR"
+  step_ok "Repo clone" "${CLONED_REPOS[*]:-} → $WORK_DIR"
 else
   step_skip "Repo clone" "(nothing requested)"
 fi

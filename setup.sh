@@ -247,9 +247,12 @@ source "$REPO_DIR/lib/gpg_signing.sh"
 # running)" unconditionally — including on the run where Docker had never
 # installed — so the last thing a new starter read was wrong. A generated
 # report cannot drift from what actually happened.
-if [[ -n "${MAC_SETUP_PROJECT:-}" && ! -d "${WORK_DIR:-$HOME/work}/${MAC_SETUP_PROJECT}" ]]; then
-  step_warn "Project ($MAC_SETUP_PROJECT)" "requested but not found in ${WORK_DIR:-$HOME/work}" \
-    "Check the name, or clone it: cd ${WORK_DIR:-$HOME/work} && git clone git@github.com:${GITHUB_ORG}/${MAC_SETUP_PROJECT}.git"
+# `|| true`: work_dir returns non-zero on a bad path, which the modules
+# above have already reported. The summary must still print.
+summary_work_dir="$(work_dir || true)"
+if [[ -n "${MAC_SETUP_PROJECT:-}" && ! -d "${summary_work_dir}/${MAC_SETUP_PROJECT}" ]]; then
+  step_warn "Project ($MAC_SETUP_PROJECT)" "requested but not found in ${summary_work_dir}" \
+    "Check the name, or clone it: cd ${summary_work_dir} && git clone git@github.com:${GITHUB_ORG}/${MAC_SETUP_PROJECT}.git"
 elif [[ -z "${MAC_SETUP_PROJECT:-}" ]]; then
   step_skip "Project bootstrap" "(MAC_SETUP_PROJECT not set)"
 fi
